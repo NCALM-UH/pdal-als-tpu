@@ -1,0 +1,4 @@
+*.laz
+*.las
+build/
+.vscode/

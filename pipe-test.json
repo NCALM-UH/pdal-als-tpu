@@ -1,0 +1,19 @@
+[
+    "20210421-FLW-Trestle-high-altitude-210421_150836-v1.2.laz",
+    "20201104_Truck_Devils_Elbow_WGS84_Colorized-UTM15.laz",
+    {
+        "type": "filters.icp_point2plane_ddu",
+        "core_spacing": 2,
+        "core_radius": 2.0,
+        "min_neighbors": 4,
+        "max_search": 5,
+        "outlier_factor": 2.5,
+        "grad_iter": 10,
+        "save_core": true,
+        "rot_thresh": 0.001,
+        "trans_thresh": 0.001,
+        "max_iter": 50,
+        "noise_sigma": 0.05
+    },
+    "20201104_Truck_Devils_Elbow_WGS84_Colorized-UTM15-WICP_Registered.laz" 
+]
