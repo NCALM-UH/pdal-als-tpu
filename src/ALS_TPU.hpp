@@ -40,7 +40,7 @@ namespace pdal {
 
 class PDAL_DLL ALS_TPU : public Filter {
     public:
-        ALS_TPU() : Filter()
+        ALS_TPU() : Filter(), m_cloud(nullptr), m_complete(false)
         {}
         std::string getName() const;
 
@@ -57,8 +57,16 @@ class PDAL_DLL ALS_TPU : public Filter {
 
         virtual void addArgs(ProgramArgs& args);
         virtual PointViewSet run(PointViewPtr view);
+        virtual void done(PointTableRef _);
 
-        PointViewPtr estimatedTrajectory(PointViewPtr view);
+        PointViewPtr tpu(PointViewPtr cloud, PointViewPtr trajectory);
+        bool linearInterpolation(
+            double t,
+            double& ix, double& iy, double& iz, double& ih,
+            PointViewPtr trajectory, PointId& interpIdx);
+
+        PointViewPtr m_cloud;
+        bool m_complete;
 
         // Temp function for debugging
         void savePoints(std::string filename, PointViewPtr view);

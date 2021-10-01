@@ -35,6 +35,7 @@
 #include "ALS_TPU.hpp"
 
 #include <SRITrajectory.hpp>
+#include <pdal/io/LasWriter.hpp>
 #include <pdal/io/BufferReader.hpp>
 
 
@@ -73,30 +74,149 @@ void ALS_TPU::addArgs(ProgramArgs& args)
 
 PointViewSet ALS_TPU::run(PointViewPtr view)
 {
-    PointViewPtr trajectory = estimatedTrajectory(view);
-
     PointViewSet viewSet;
-    viewSet.insert(trajectory);
-
+    if (this->m_cloud)
+    {
+        PointViewPtr result = this->tpu(this->m_cloud, view);
+        viewSet.insert(result);
+        this->m_complete = true;
+    }
+    else
+    {
+        this->m_cloud = view;
+    }
     return viewSet;
 }
 
 
-PointViewPtr ALS_TPU::estimatedTrajectory(PointViewPtr view)
+void ALS_TPU::done(PointTableRef _)
 {
-    SRITrajectory filter;
+    if (!this->m_complete)
+    {
+        throw pdal_error(
+            "filters.als_tpu must have two point view inputs, no more, no less");
+    }
+}
 
-    BufferReader reader;
-    reader.addView(view);
-    filter.setInput(reader);
 
-    PointTable table;
-    filter.prepare(table);
+PointViewPtr ALS_TPU::tpu(PointViewPtr cloud, PointViewPtr trajectory)
+{
+    PointId interpIdx = 0;
 
-    PointViewSet viewSet = filter.execute(table);
-    PointViewPtr newView = *viewSet.begin();
+    // iterate over each cloud point
+    for (PointId i = 0; i < cloud->size(); ++i)
+    {
+        // 1. interpolate sensor xyz and heading
+        double ix, iy, iz, ih;
+        bool successfulInterp = linearInterpolation(
+            cloud->getFieldAs<double>(Dimension::Id::GpsTime, i),
+            ix, iy, iz, ih,
+            trajectory, interpIdx
+        );
+        // // test
+        // if (successfulInterp)
+        // {
+        //     cloud->setField(Dimension::Id::X, i, ix);
+        //     cloud->setField(Dimension::Id::Y, i, iy);
+        //     cloud->setField(Dimension::Id::Z, i, iz);
+        //     cloud->setField(Dimension::Id::Azimuth, i, ih);
+        // }
 
-    return newView;
+        // 2. invert for lidar distance and laser scan angle; estimate incidence angle
+
+
+
+        // 3. build observation covariance matrix
+
+
+
+        // 4. zero out items that we do not estimate (roll, pitch, forward/back scan angle)
+
+
+
+        // 5. propagate observation variance into point xyz covariance matrix
+
+
+
+        //6. store covariance information in new dimensions
+    }
+
+
+    savePoints("cloud.las", cloud);
+    savePoints("trajectory.las", trajectory);
+    return cloud;
+}
+
+
+bool ALS_TPU::linearInterpolation(
+    double t,
+    double& ix, double& iy, double& iz, double& ih,
+    PointViewPtr trajectory, PointId& interpIdx)
+{
+    // special case: before left end
+    if (t < trajectory->getFieldAs<double>(Dimension::Id::GpsTime, 0))
+    {
+        interpIdx = 0;
+        return false;
+    }
+
+    // special case: beyond right end
+    if (t > trajectory->getFieldAs<double>(Dimension::Id::GpsTime, trajectory->size() - 1))
+    {
+        interpIdx = trajectory->size() - 1;
+        return false;
+    }
+
+    // find left end of interpolation interval
+    while (t > trajectory->getFieldAs<double>(Dimension::Id::GpsTime, interpIdx + 1))
+    {
+        interpIdx++;
+    }
+    while (t < trajectory->getFieldAs<double>(Dimension::Id::GpsTime, interpIdx))
+    {
+        interpIdx--;
+    }
+
+    // interpolate
+    double factor = (t - trajectory->getFieldAs<double>(Dimension::Id::GpsTime, interpIdx))
+                  / (trajectory->getFieldAs<double>(Dimension::Id::GpsTime, interpIdx + 1)
+                  - trajectory->getFieldAs<double>(Dimension::Id::GpsTime, interpIdx));
+
+    ix = trajectory->getFieldAs<double>(Dimension::Id::X, interpIdx)
+       + factor * (trajectory->getFieldAs<double>(Dimension::Id::X, interpIdx + 1)
+       - trajectory->getFieldAs<double>(Dimension::Id::X, interpIdx));
+
+    iy = trajectory->getFieldAs<double>(Dimension::Id::Y, interpIdx)
+       + factor * (trajectory->getFieldAs<double>(Dimension::Id::Y, interpIdx + 1)
+       - trajectory->getFieldAs<double>(Dimension::Id::Y, interpIdx));
+
+    iz = trajectory->getFieldAs<double>(Dimension::Id::Z, interpIdx)
+       + factor * (trajectory->getFieldAs<double>(Dimension::Id::Z, interpIdx + 1)
+       - trajectory->getFieldAs<double>(Dimension::Id::Z, interpIdx));
+
+    ih = trajectory->getFieldAs<double>(Dimension::Id::Azimuth, interpIdx)
+       + factor * (trajectory->getFieldAs<double>(Dimension::Id::Azimuth, interpIdx + 1)
+       - trajectory->getFieldAs<double>(Dimension::Id::Azimuth, interpIdx));
+
+    return true;
+}
+
+
+void ALS_TPU::savePoints(std::string filename, PointViewPtr view)
+{
+    pdal::Options ops;
+    ops.add("filename", filename);
+    ops.add("minor_version", 4);
+    ops.add("extra_dims", "all");
+
+    BufferReader bufferReader;
+    bufferReader.addView(view);
+
+    pdal::LasWriter writer;
+    writer.setOptions(ops);
+    writer.setInput(bufferReader);
+    writer.prepare(view->table());
+    writer.execute(view->table());
 }
 
 } // namespace pdal
