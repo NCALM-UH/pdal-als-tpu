@@ -54,16 +54,23 @@ class PDAL_DLL ALS_TPU : public Filter {
         double m_laserBeamDivergence;
         double m_maximumIncidenceAngle;
         bool m_includeIncidenceAngle;
+        Dimension::Id m_lidarDist, m_scanAngle, m_incAngle;
 
         virtual void addArgs(ProgramArgs& args);
+        virtual void addDimensions(PointLayoutPtr layout);
         virtual PointViewSet run(PointViewPtr view);
         virtual void done(PointTableRef _);
 
         PointViewPtr tpu(PointViewPtr cloud, PointViewPtr trajectory);
         bool linearInterpolation(
-            double t,
-            double& ix, double& iy, double& iz, double& ih,
+            double pointTime,
+            double& trajX, double& trajY, double& trajZ, double& trajHeading,
             PointViewPtr trajectory, PointId& interpIdx);
+        void invertObservations(
+            PointRef cloudPoint,
+            double trajX, double trajY, double trajZ, double trajHeading,
+            double& lidarDist, double& scanAngle, double& incidenceAngle
+        );
 
         PointViewPtr m_cloud;
         bool m_complete;

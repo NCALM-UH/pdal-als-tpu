@@ -1,7 +1,11 @@
 [
     {
         "type": "readers.las",
-        "filename": "test_uh.las",
+        "filename": "test_uh.las"
+    },
+    {
+        "type": "filters.normal",
+        "knn": 16,
         "tag": "cloud"
     },
     {
@@ -15,5 +19,10 @@
             "trajectory"
         ]
     },
-    "test_uh_tpu.las" 
+    {
+        "type": "writers.las",
+        "minor_version": 4,
+        "extra_dims": "all",
+        "filename": "test_uh_tpu.las"
+    }
 ]

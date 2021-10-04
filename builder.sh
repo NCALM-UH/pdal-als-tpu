@@ -1,3 +1,5 @@
+#!/bin/bash
+
 sudo rm -r -f build
 mkdir build && cd build
 cmake -D CMAKE_INSTALL_PREFIX=${CONDA_PREFIX} ..

@@ -33,16 +33,17 @@
  ****************************************************************************/
 
 #include "ALS_TPU.hpp"
-
-#include <SRITrajectory.hpp>
+#include <math.h>
+#include <Eigen/Dense>
 #include <pdal/io/LasWriter.hpp>
 #include <pdal/io/BufferReader.hpp>
-
+#include <SRITrajectory.hpp>
 
 namespace pdal
 {
 
 using namespace Dimension;
+using namespace Eigen;
 
 static PluginInfo const s_info
 {
@@ -67,8 +68,16 @@ void ALS_TPU::addArgs(ProgramArgs& args)
     args.add("s_sensor_rollpitch", "Sensor roll and pitch standard deviation (degrees)", m_sSensorRollPitch);
     args.add("s_sensor_yaw", "Sensor yaw standard deviation (degrees)", m_sSensorYaw);
     args.add("laser_beam_divergence", "Laser beam divergence (milliradians)", m_laserBeamDivergence);
-    args.add("maximum_incidence_angle", "Maximum allowable incidence angle (degrees <90)", m_maximumIncidenceAngle);
+    args.add("maximum_incidence_angle", "Maximum allowable incidence angle (degrees <90)", m_maximumIncidenceAngle, 85.0);
     args.add("include_incidence_angle", "Include incidence angle in TPU computation", m_includeIncidenceAngle);
+}
+
+
+void ALS_TPU::addDimensions(PointLayoutPtr layout)
+{
+    m_lidarDist = layout->registerOrAssignDim("LidarDistance", Type::Double);
+    m_scanAngle = layout->registerOrAssignDim("MyScanAngle", Type::Double);
+    m_incAngle = layout->registerOrAssignDim("IncAngle", Type::Double);
 }
 
 
@@ -106,24 +115,33 @@ PointViewPtr ALS_TPU::tpu(PointViewPtr cloud, PointViewPtr trajectory)
     // iterate over each cloud point
     for (PointId i = 0; i < cloud->size(); ++i)
     {
-        // 1. interpolate sensor xyz and heading
-        double ix, iy, iz, ih;
+        // 1. interpolate sensor xyz and heading from trajectory points
+        double trajX, trajY, trajZ, trajHeading;
         bool successfulInterp = linearInterpolation(
-            cloud->getFieldAs<double>(Dimension::Id::GpsTime, i),
-            ix, iy, iz, ih,
+            cloud->getFieldAs<double>(Id::GpsTime, i),
+            trajX, trajY, trajZ, trajHeading,
             trajectory, interpIdx
         );
         // // test
         // if (successfulInterp)
         // {
-        //     cloud->setField(Dimension::Id::X, i, ix);
-        //     cloud->setField(Dimension::Id::Y, i, iy);
-        //     cloud->setField(Dimension::Id::Z, i, iz);
-        //     cloud->setField(Dimension::Id::Azimuth, i, ih);
+        //     cloud->setField(Id::X, i, trajX);
+        //     cloud->setField(Id::Y, i, trajY);
+        //     cloud->setField(Id::Z, i, trajZ);
+        //     cloud->setField(Id::Azimuth, i, trajHeading);
         // }
 
         // 2. invert for lidar distance and laser scan angle; estimate incidence angle
-
+        double lidarDist, scanAngle, incidenceAngle;
+        invertObservations(
+            cloud->point(i),
+            trajX, trajY, trajZ, trajHeading,
+            lidarDist, scanAngle, incidenceAngle
+        );
+        // test
+        cloud->setField(m_lidarDist, i, lidarDist);
+        cloud->setField(m_scanAngle, i, scanAngle);
+        cloud->setField(m_incAngle, i, incidenceAngle);
 
 
         // 3. build observation covariance matrix
@@ -142,61 +160,96 @@ PointViewPtr ALS_TPU::tpu(PointViewPtr cloud, PointViewPtr trajectory)
     }
 
 
-    savePoints("cloud.las", cloud);
-    savePoints("trajectory.las", trajectory);
+    // savePoints("cloud.las", cloud);
+    // savePoints("trajectory.las", trajectory);
     return cloud;
 }
 
 
+void ALS_TPU::invertObservations(
+    PointRef cloudPoint,
+    double trajX, double trajY, double trajZ, double trajHeading,
+    double& lidarDist, double& scanAngle, double& incidenceAngle)
+{
+    // lidar distance
+    Vector3d laserVector;
+    laserVector << (cloudPoint.getFieldAs<double>(Id::X) - trajX),
+                   (cloudPoint.getFieldAs<double>(Id::Y) - trajY),
+                   (cloudPoint.getFieldAs<double>(Id::Z) - trajZ);
+    lidarDist = laserVector.norm();
+
+    // laser to ground surface incidence angle
+    Vector3d normalVector;
+    normalVector << cloudPoint.getFieldAs<double>(Id::NormalX),
+                    cloudPoint.getFieldAs<double>(Id::NormalY),
+                    cloudPoint.getFieldAs<double>(Id::NormalZ);
+    laserVector /= lidarDist;
+    incidenceAngle = acos(laserVector.dot(normalVector)) * 180.0 / M_PI;
+    if (incidenceAngle > m_maximumIncidenceAngle)
+    {
+        incidenceAngle = m_maximumIncidenceAngle;
+    }
+
+    // scan angle
+    Vector3d nadirVector, headingVector, crossProduct;
+    trajHeading *= M_PI / 180.0;
+    nadirVector << 0.0, 0.0, -1.0;
+    headingVector << sin(trajHeading), cos(trajHeading), 0.0;
+    scanAngle = acos(laserVector.dot(nadirVector)) * 180.0 / M_PI;
+    crossProduct = laserVector.cross(headingVector);
+    scanAngle = copysign(scanAngle, crossProduct(2));
+}
+
+
 bool ALS_TPU::linearInterpolation(
-    double t,
-    double& ix, double& iy, double& iz, double& ih,
+    double pointTime,
+    double& trajX, double& trajY, double& trajZ, double& trajHeading,
     PointViewPtr trajectory, PointId& interpIdx)
 {
     // special case: before left end
-    if (t < trajectory->getFieldAs<double>(Dimension::Id::GpsTime, 0))
+    if (pointTime < trajectory->getFieldAs<double>(Id::GpsTime, 0))
     {
         interpIdx = 0;
         return false;
     }
 
     // special case: beyond right end
-    if (t > trajectory->getFieldAs<double>(Dimension::Id::GpsTime, trajectory->size() - 1))
+    if (pointTime > trajectory->getFieldAs<double>(Id::GpsTime, trajectory->size() - 1))
     {
         interpIdx = trajectory->size() - 1;
         return false;
     }
 
     // find left end of interpolation interval
-    while (t > trajectory->getFieldAs<double>(Dimension::Id::GpsTime, interpIdx + 1))
+    while (pointTime > trajectory->getFieldAs<double>(Id::GpsTime, interpIdx + 1))
     {
         interpIdx++;
     }
-    while (t < trajectory->getFieldAs<double>(Dimension::Id::GpsTime, interpIdx))
+    while (pointTime < trajectory->getFieldAs<double>(Id::GpsTime, interpIdx))
     {
         interpIdx--;
     }
 
     // interpolate
-    double factor = (t - trajectory->getFieldAs<double>(Dimension::Id::GpsTime, interpIdx))
-                  / (trajectory->getFieldAs<double>(Dimension::Id::GpsTime, interpIdx + 1)
-                  - trajectory->getFieldAs<double>(Dimension::Id::GpsTime, interpIdx));
+    double factor = (pointTime - trajectory->getFieldAs<double>(Id::GpsTime, interpIdx))
+                  / (trajectory->getFieldAs<double>(Id::GpsTime, interpIdx + 1)
+                  - trajectory->getFieldAs<double>(Id::GpsTime, interpIdx));
 
-    ix = trajectory->getFieldAs<double>(Dimension::Id::X, interpIdx)
-       + factor * (trajectory->getFieldAs<double>(Dimension::Id::X, interpIdx + 1)
-       - trajectory->getFieldAs<double>(Dimension::Id::X, interpIdx));
+    trajX = trajectory->getFieldAs<double>(Id::X, interpIdx)
+       + factor * (trajectory->getFieldAs<double>(Id::X, interpIdx + 1)
+       - trajectory->getFieldAs<double>(Id::X, interpIdx));
 
-    iy = trajectory->getFieldAs<double>(Dimension::Id::Y, interpIdx)
-       + factor * (trajectory->getFieldAs<double>(Dimension::Id::Y, interpIdx + 1)
-       - trajectory->getFieldAs<double>(Dimension::Id::Y, interpIdx));
+    trajY = trajectory->getFieldAs<double>(Id::Y, interpIdx)
+       + factor * (trajectory->getFieldAs<double>(Id::Y, interpIdx + 1)
+       - trajectory->getFieldAs<double>(Id::Y, interpIdx));
 
-    iz = trajectory->getFieldAs<double>(Dimension::Id::Z, interpIdx)
-       + factor * (trajectory->getFieldAs<double>(Dimension::Id::Z, interpIdx + 1)
-       - trajectory->getFieldAs<double>(Dimension::Id::Z, interpIdx));
+    trajZ = trajectory->getFieldAs<double>(Id::Z, interpIdx)
+       + factor * (trajectory->getFieldAs<double>(Id::Z, interpIdx + 1)
+       - trajectory->getFieldAs<double>(Id::Z, interpIdx));
 
-    ih = trajectory->getFieldAs<double>(Dimension::Id::Azimuth, interpIdx)
-       + factor * (trajectory->getFieldAs<double>(Dimension::Id::Azimuth, interpIdx + 1)
-       - trajectory->getFieldAs<double>(Dimension::Id::Azimuth, interpIdx));
+    trajHeading = trajectory->getFieldAs<double>(Id::Azimuth, interpIdx)
+       + factor * (trajectory->getFieldAs<double>(Id::Azimuth, interpIdx + 1)
+       - trajectory->getFieldAs<double>(Id::Azimuth, interpIdx));
 
     return true;
 }

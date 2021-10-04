@@ -2,7 +2,16 @@
 2. We will not create valid TPU for points with times outside the trajectory.
     * Assign obvious bad value, like -9999?
     * Or not store that point?
-3. It is cleaner to install SRI's trajectory filter into a Conda environment. Need to show the steps and where things get stored
+3. I need to check that there are point normals already computed if the incidence angle error option is being used.
+4. I am ignoring the pitch values supplied by SRI's trajectory for now. I need to understand how they are computed first:
+    * Are they "clean" with respect to a laser scanner with a constant forward/back laser emission angle?
+    * Do they make sense for a sensor that flies with a consistent non-zero pitch value?
+    * Does the heading account for a sensor/aircraft that is "crabbing"?
+    * CURRENT ASSUMPTIONS:
+        * No sensor/aircraft crab
+        * Zero pitch
+        * No forward/back laser emission angle
+
 
 ## Updated SRI Trajectory Install Instructions
 Current instructions direct you to install dependencies into a Conda environment:
@@ -31,6 +40,6 @@ cd BUILD
 cmake -D CMAKE_INSTALL_PREFIX=$CONDA_PREFIX ..
 make -j4
 make install
-export SRI_TRAJECTORY_CONFIG_DIR=$CONDA_PREFIX/resources/trajectory
+conda env config vars set SRI_TRAJECTORY_CONFIG_DIR="${CONDA_PREFIX}/resources/trajectory"
 pdal --drivers | grep trajectory
 ```
