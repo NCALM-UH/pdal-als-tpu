@@ -36,7 +36,11 @@
 
 #include <pdal/Filter.hpp>
 
+#include <Eigen/Dense>
+
 namespace pdal {
+
+using namespace Eigen;
 
 class PDAL_DLL ALS_TPU : public Filter {
     public:
@@ -55,6 +59,7 @@ class PDAL_DLL ALS_TPU : public Filter {
         double m_maximumIncidenceAngle;
         bool m_includeIncidenceAngle;
         Dimension::Id m_lidarDist, m_scanAngle, m_incAngle;
+        Dimension::Id m_xVar, m_yVar, m_zVar, m_xyCov, m_xzCov, m_yzCov;
 
         virtual void addArgs(ProgramArgs& args);
         virtual void addDimensions(PointLayoutPtr layout);
@@ -70,6 +75,15 @@ class PDAL_DLL ALS_TPU : public Filter {
             PointRef cloudPoint,
             double trajX, double trajY, double trajZ, double trajHeading,
             double& lidarDist, double& scanAngle, double& incidenceAngle
+        );
+        MatrixXd observationCovariance(
+            double lidarDist, double scanAngle, double incidenceAngle
+        );
+        Matrix3d propagateCovariance(
+            double lidarDist, double scanAngleLR, double scanAngleFB,
+            double trajX, double trajY, double trajZ,
+            double trajRoll, double trajPitch, double trajHeading,
+            MatrixXd obsCovariance
         );
 
         PointViewPtr m_cloud;
