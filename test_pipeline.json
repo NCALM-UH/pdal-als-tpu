@@ -11,6 +11,7 @@
     },
     {
         "type": "filters.als_tpu",
+        "profile": "titan-channel2",
         "inputs": [
             "cloud",
             "trajectory"

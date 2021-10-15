@@ -84,6 +84,8 @@ namespace pdal {
                 double lidarDist, double scanAngleLR, double scanAngleFB,
                 double trajX, double trajY, double trajZ,
                 double trajRoll, double trajPitch, double trajHeading,
+                double boreRoll, double borePitch, double boreYaw,
+                double leverX, double leverY, double leverZ,
                 Eigen::MatrixXd obsCovariance);
 
             PointViewPtr m_cloud;

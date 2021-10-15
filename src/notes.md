@@ -9,8 +9,9 @@
         * Zero pitch
         * No forward/back laser emission angle
 4. Talk with Craig about what a full model should look like.
-5. What is the best way to get all the measurement uncertainties entered?
-6. Need to add a UAV and ALS generic parameter set selection.
+5. We assume heading has already been adjusted for wander angle
+6. We assume beam divergence is a 1/e^2 (not 1/e) definition.
+7. Need to add a UAV and ALS generic parameter set selection.
 
 
 ## Updated SRI Trajectory Install Instructions
