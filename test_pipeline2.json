@@ -1,12 +1,15 @@
 [
     {
         "type": "readers.las",
-        "filename": "test_uh.las",
+        "filename": "test_uh.las"
+    },
+    {
+        "type": "filters.normal",
+        "knn": 128,
         "tag": "cloud"
     },
     {
-        "type": "readers.las",
-        "filename": "test_uh-trajectory.las",
+        "type": "filters.sritrajectory",
         "tag": "trajectory"
     },
     {

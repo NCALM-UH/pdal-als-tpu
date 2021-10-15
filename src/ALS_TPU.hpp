@@ -35,65 +35,65 @@
 #pragma once
 
 #include <pdal/Filter.hpp>
-
 #include <Eigen/Dense>
 
 namespace pdal {
 
-using namespace Eigen;
+    class PDAL_DLL ALS_TPU : public Filter {
+        public:
+            ALS_TPU() : Filter(), m_cloud(nullptr), m_complete(false)
+            {}
+            std::string getName() const;
 
-class PDAL_DLL ALS_TPU : public Filter {
-    public:
-        ALS_TPU() : Filter(), m_cloud(nullptr), m_complete(false)
-        {}
-        std::string getName() const;
+        private:
+            std::string m_paramProfile;
+            double m_sLidarDistance;
+            double m_sScanAngle;
+            double m_sSensorXY, m_sSensorZ;
+            double m_sSensorRollPitch, m_sSensorYaw;
+            double m_sBoreRollPitch, m_sBoreYaw;
+            double m_sLeverX, m_sLeverY, m_sLeverZ;
+            double m_laserBeamDivergence;
+            double m_maximumIncidenceAngle;
+            bool m_includeIncidenceAngle;
+            double m_noDataValue;
+            Dimension::Id m_lidarDist, m_scanAngleLR, m_scanAngleFB, m_incAngle;
+            Dimension::Id m_xVar, m_yVar, m_zVar, m_xyCov, m_xzCov, m_yzCov;
+            Dimension::Id m_xStd, m_yStd, m_zStd;
+            Dimension::Id m_trajX, m_trajY, m_trajZ, m_trajRoll, m_trajPitch, m_trajHeading;
 
-    private:
-        double m_sLidarDistance;
-        double m_sScanAngle;
-        double m_sSensorXY;
-        double m_sSensorZ;
-        double m_sSensorRollPitch;
-        double m_sSensorYaw;
-        double m_laserBeamDivergence;
-        double m_maximumIncidenceAngle;
-        bool m_includeIncidenceAngle;
-        Dimension::Id m_lidarDist, m_scanAngle, m_incAngle;
-        Dimension::Id m_xVar, m_yVar, m_zVar, m_xyCov, m_xzCov, m_yzCov;
+            virtual void addArgs(ProgramArgs& args);
+            void initialize();
+            virtual void addDimensions(PointLayoutPtr layout);
+            virtual PointViewSet run(PointViewPtr view);
+            virtual void done(PointTableRef _);
 
-        virtual void addArgs(ProgramArgs& args);
-        virtual void addDimensions(PointLayoutPtr layout);
-        virtual PointViewSet run(PointViewPtr view);
-        virtual void done(PointTableRef _);
+            void setParams();
+            PointViewPtr tpu(PointViewPtr cloud, PointViewPtr trajectory);
+            bool linearInterpolation(
+                double pointTime,
+                double& trajX, double& trajY, double& trajZ, double& trajHeading,
+                PointViewPtr trajectory, PointId& interpIdx);
+            void invertObservations(
+                PointRef cloudPoint,
+                double trajX, double trajY, double trajZ, double trajHeading,
+                double& lidarDist, double& scanAngle, double& incidenceAngle);
+            Eigen::MatrixXd observationCovariance(
+                double lidarDist, double scanAngle, double incidenceAngle);
+            Eigen::Matrix3d propagateCovariance(
+                double lidarDist, double scanAngleLR, double scanAngleFB,
+                double trajX, double trajY, double trajZ,
+                double trajRoll, double trajPitch, double trajHeading,
+                Eigen::MatrixXd obsCovariance);
 
-        PointViewPtr tpu(PointViewPtr cloud, PointViewPtr trajectory);
-        bool linearInterpolation(
-            double pointTime,
-            double& trajX, double& trajY, double& trajZ, double& trajHeading,
-            PointViewPtr trajectory, PointId& interpIdx);
-        void invertObservations(
-            PointRef cloudPoint,
-            double trajX, double trajY, double trajZ, double trajHeading,
-            double& lidarDist, double& scanAngle, double& incidenceAngle
-        );
-        MatrixXd observationCovariance(
-            double lidarDist, double scanAngle, double incidenceAngle
-        );
-        Matrix3d propagateCovariance(
-            double lidarDist, double scanAngleLR, double scanAngleFB,
-            double trajX, double trajY, double trajZ,
-            double trajRoll, double trajPitch, double trajHeading,
-            MatrixXd obsCovariance
-        );
+            PointViewPtr m_cloud;
+            bool m_complete;
 
-        PointViewPtr m_cloud;
-        bool m_complete;
+            // Temp function for debugging
+            void savePoints(std::string filename, PointViewPtr view);
 
-        // Temp function for debugging
-        void savePoints(std::string filename, PointViewPtr view);
-
-        ALS_TPU& operator=(const ALS_TPU&);     // not implemented
-        ALS_TPU(const ALS_TPU&);                // not implemented
-};
+            ALS_TPU& operator=(const ALS_TPU&);     // not implemented
+            ALS_TPU(const ALS_TPU&);                // not implemented
+    };
 
 } // namespace pdal

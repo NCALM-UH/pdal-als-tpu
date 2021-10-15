@@ -1,9 +1,6 @@
 1. The interpolation is most efficient when the point cloud is sorted by time.
-2. We will not create valid TPU for points with times outside the trajectory.
-    * Assign obvious bad value, like -9999?
-    * Or not store that point?
-3. I need to check that there are point normals already computed if the incidence angle error option is being used.
-4. I am ignoring the pitch values supplied by SRI's trajectory for now. I need to understand how they are computed first:
+2. I need to check that there are point normals already computed if the incidence angle error option is being used.
+3. I am ignoring the pitch values supplied by SRI's trajectory for now. I need to understand how they are computed first:
     * Are they "clean" with respect to a laser scanner with a constant forward/back laser emission angle?
     * Do they make sense for a sensor that flies with a consistent non-zero pitch value?
     * Does the heading account for a sensor/aircraft that is "crabbing"?
@@ -11,6 +8,9 @@
         * No sensor/aircraft crab
         * Zero pitch
         * No forward/back laser emission angle
+4. Talk with Craig about what a full model should look like.
+5. What is the best way to get all the measurement uncertainties entered?
+6. Need to add a UAV and ALS generic parameter set selection.
 
 
 ## Updated SRI Trajectory Install Instructions
