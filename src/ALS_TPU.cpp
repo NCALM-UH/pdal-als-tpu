@@ -114,7 +114,7 @@ namespace pdal
     void ALS_TPU::addDimensions(PointLayoutPtr layout)
     {
         m_lidarDist = layout->registerOrAssignDim("LidarDistance", Type::Double);
-        m_scanAngleLR = layout->registerOrAssignDim("ScanAngleLR", Type::Double);
+        m_scanAngleRL = layout->registerOrAssignDim("ScanAngleRL", Type::Double);
         m_scanAngleFB = layout->registerOrAssignDim("ScanAngleFB", Type::Double);
         m_incAngle = layout->registerOrAssignDim("IncAngle", Type::Double);
 
@@ -191,8 +191,7 @@ namespace pdal
             m_sBoreRollPitch = 0.001;
             // degrees (Glennie, 2007, JAG, Table 2)
             m_sBoreYaw = 0.004;
-            // meters (unknown, using conservative estimate from Glennie's 2007
-            // JAG paper)
+            // meters (conservative estimate from Glennie's 2007 JAG paper)
             m_sLeverX = 0.02;
             m_sLeverY = 0.02;
             m_sLeverZ = 0.02;
@@ -232,6 +231,7 @@ namespace pdal
 
     PointViewPtr ALS_TPU::tpu(PointViewPtr cloud, PointViewPtr trajectory)
     {
+
         PointId interpIdx = 0;
 
         // iterate over each cloud point
@@ -269,7 +269,6 @@ namespace pdal
 
                 // 4. zero out items that we do not estimate (roll, pitch, forward/back scan angle)
                 double trajRoll = 0.0;
-                double scanAngleFB = 0.0;
                 double boreRoll = 0.0;
                 double borePitch = 0.0;
                 double boreYaw = 0.0;
@@ -296,7 +295,7 @@ namespace pdal
 
                 // Temporary test output
                 cloud->setField(m_lidarDist, i, lidarDist);
-                cloud->setField(m_scanAngleLR, i, scanAngleRL * 180.0 / M_PI);
+                cloud->setField(m_scanAngleRL, i, scanAngleRL * 180.0 / M_PI);
                 cloud->setField(m_scanAngleFB, i, scanAngleFB * 180.0 / M_PI);
                 cloud->setField(m_incAngle, i, incidenceAngle * 180.0 / M_PI);
 
@@ -426,7 +425,7 @@ namespace pdal
         /*
         Variance order: 
             1. lidar distance
-            2. scan angle (left-right)
+            2. scan angle (right-left)
             3. scan angle (forward-back)
             4. sensor x
             5. sensor y
@@ -461,7 +460,7 @@ namespace pdal
         {
             c(0, 0) = pow(m_sLidarDistance, 2.0);
         }
-        // 2. scan angle (left-right)
+        // 2. scan angle (right-left)
         c(1, 1) = pow(m_sScanAngle, 2.0) + pow(m_laserBeamDivergence/4, 2.0);
         // 3. scan angle (forward-back)
         c(2, 2) = pow(m_laserBeamDivergence/4, 2.0);
@@ -501,47 +500,43 @@ namespace pdal
         double& lidarDist, double& scanAngleRL, double& scanAngleFB,
         double& incidenceAngle)
     {
-        // lidar distance
+        IOFormat CleanFmt(4, 0, ", ", "\n", "[", "]");
+
         Vector3d laserVector;
         laserVector << (cloudPoint.getFieldAs<double>(Id::X) - trajX),
-                    (cloudPoint.getFieldAs<double>(Id::Y) - trajY),
-                    (cloudPoint.getFieldAs<double>(Id::Z) - trajZ);
+                       (cloudPoint.getFieldAs<double>(Id::Y) - trajY),
+                       (cloudPoint.getFieldAs<double>(Id::Z) - trajZ);
         lidarDist = laserVector.norm();
 
-        // laser to ground surface incidence angle
-        Vector3d normalVector, unitLaserVector;
-        normalVector << cloudPoint.getFieldAs<double>(Id::NormalX),
-                        cloudPoint.getFieldAs<double>(Id::NormalY),
-                        cloudPoint.getFieldAs<double>(Id::NormalZ);
+        Vector3d groundNormalVector, unitLaserVector;
+        groundNormalVector << cloudPoint.getFieldAs<double>(Id::NormalX),
+                              cloudPoint.getFieldAs<double>(Id::NormalY),
+                              cloudPoint.getFieldAs<double>(Id::NormalZ);
         unitLaserVector = laserVector / lidarDist;
-        incidenceAngle = acos(-unitLaserVector.dot(normalVector));
+        incidenceAngle = acos(unitLaserVector.dot(-groundNormalVector));
         if (incidenceAngle > m_maximumIncidenceAngle)
         {
             incidenceAngle = m_maximumIncidenceAngle;
         }
 
-        // scan angles: right(+), left(-) and forward(+), back(-)
-        Vector3d unitTrajVector, unitPitchVector, unitPerpVector, perpComp, unitInComp;
+        // estimate scan angle (ignoring any forward/back angles for now)
+        Vector3d unitTrajVector, unitPitchVector, unitNormalVector;
         // unit vector in direction of trajectory
         unitTrajVector << sin(trajHeading), cos(trajHeading), 0.0;
         // upward pointing unit pitch vector
         unitPitchVector << 0.0, 0.0, 1.0;
-        // vector perp to plane created by trajectory and pitch vectors
-        unitPerpVector = unitTrajVector.cross(unitPitchVector);
-        // rotate unitTrajVector and unitPitchVector according to pitch angle
-        unitTrajVector = cos(trajPitch) * unitTrajVector + sin(trajPitch) * unitPerpVector;
-        unitPitchVector = cos(trajPitch) * unitPitchVector + sin(trajPitch) * unitPerpVector;
-        // laserVector component perp to plane formed by trajVector and pitchVector
-        perpComp = laserVector.dot(unitPerpVector) * unitPerpVector;
-        // subtract to get laserVector component in plane formed by trajVector and pitchVector
-        unitInComp = (laserVector - perpComp) / (laserVector - perpComp).norm();
-        // dot product to get orthogonal angle between laserVector and plane
-        scanAngleRL = acos(unitLaserVector.dot(unitInComp));
-        // dot product to get in-plane angle between laserVector and pitchVector
-        scanAngleFB = acos(unitInComp.dot(-unitPitchVector));
-        // assign correct scanAngleLR and scanAngleFB signs
-        scanAngleRL = copysign(scanAngleRL, unitLaserVector.dot(unitPerpVector));
-        scanAngleFB = copysign(scanAngleFB, unitLaserVector.dot(unitTrajVector));
+        // vector normal to plane created by trajectory and pitch vectors
+        unitNormalVector = unitTrajVector.cross(unitPitchVector);
+        // rotate unitPitchVector by pitch angle about the unitNormalVector
+        // https://en.wikipedia.org/wiki/Rodrigues%27_rotation_formula
+        unitPitchVector = cos(trajPitch) * unitPitchVector + sin(trajPitch) * unitNormalVector.cross(unitPitchVector);
+        // estimate scan angle as angle between laser vector and pitch vector
+        scanAngleRL = acos(unitLaserVector.dot(-unitPitchVector));
+        // check which side of the trajectory vector the laser vector is pointing for sign
+        scanAngleRL = copysign(scanAngleRL, unitLaserVector.dot(unitNormalVector));
+
+        // for now
+        scanAngleFB = 0.0;
     }
 
 

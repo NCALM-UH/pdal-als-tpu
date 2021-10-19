@@ -1,0 +1,22 @@
+[
+    {
+        "type": "readers.las",
+        "filename": "test_uh.las"
+    },
+    {
+        "type": "filters.sort",
+        "dimension": "GpsTime",
+        "order": "ASC"
+    },
+    {
+        "type": "filters.normal",
+        "knn": 64
+    },
+    {
+        "type": "writers.las",
+        "minor_version": 4,
+        "extra_dims": "all",
+        "filename": "test_uh-sorted-normal64.las"
+    }
+
+]

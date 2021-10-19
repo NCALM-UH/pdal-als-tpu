@@ -1,14 +1,15 @@
 [
     {
         "type": "readers.las",
-        "filename": "C2_L2-normal64_timesort.laz"
+        "filename": "test_uh-sorted-normal64.las"
     },
     {
-        "type": "filters.sritrajectory",
-        "tag": "trajectory"
+        "type": "filters.sritrajectory"
     },
     {
-        "type": "writers.text",
-        "filename": "C2_L2-normal64_timesort-sritraj.txt"
+        "type": "writers.las",
+        "filename": "test_uh-sorted-normal64-sritraj.las",
+        "minor_version": 4,
+        "extra_dims": "all"
     }
 ]

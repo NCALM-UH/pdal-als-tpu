@@ -1,20 +1,17 @@
-1. The interpolation is most efficient when the point cloud is sorted by time.
+1. The interpolation is expected to be most efficient when the point cloud is sorted by time.
 2. I need to check that there are point normals already computed if the incidence angle error option is being used.
-3. I am ignoring the pitch values supplied by SRI's trajectory for now. I need to understand how they are computed first:
-    * Are they "clean" with respect to a laser scanner with a constant forward/back laser emission angle?
-    * Do they make sense for a sensor that flies with a consistent non-zero pitch value?
-    * Does the heading account for a sensor/aircraft that is "crabbing"?
-    * CURRENT ASSUMPTIONS:
-        * No sensor/aircraft crab
-        * Zero pitch
-        * No forward/back laser emission angle
+    * Did not find a clean way to do this, so letting this slide. 
+3. I am ignoring any forward/back scan angle for now in terms of inverting/recovering them.
+    * However, we know two of the Titan channels have a fixed forward/back angle.
+    * But the SRI trajectory will interpret that as pitch. Would like to address that first. Could just subtract a user-supplied constant forward/back angle from the trajectory pitch. But would be better, IMO, to add an option to SRI's trajectory filter to do this so the trajectory pitch values are correct. We could then recover the forward/back scan angle in the observation inversion function.
+    * The forward/back scan angle is included (all zero values for now) in order to insert beam divergence error in a direction orthogonal to the scanning direction.
+    * We do not estimate/add/insert an observation uncertainty on the forward/back scan angle as it almost perfectly correlated with boresight pitch.
 4. Add option for users to point to a JSON file for the uncertainty set.
 5. We assume heading has already been adjusted for wander angle
 6. We assume trajectory attitude angles are in degrees (not radians).
-6. We assume beam divergence is a 1/e^2 (not 1/e) definition.
-7. Need to add a UAV and ALS generic parameter set selection.
-8. Rework my symbolic estimated comps to use all active rotations.
-9. Add option for constant forward/back laser angle (e.g., Optech Titan 532 and 1550 channels). Subtract the value from the trajectory recovered by SRI's filter.
+7. We assume beam divergence is a 1/e^2 (not 1/e) definition.
+8. Need to add a UAV and ALS generic parameter set selection.
+
 
 
 

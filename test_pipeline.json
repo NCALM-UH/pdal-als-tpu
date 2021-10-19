@@ -6,7 +6,7 @@
     },
     {
         "type": "readers.las",
-        "filename": "test_uh-trajectory.las",
+        "filename": "test_uh-sorted-normal64-sritraj.las",
         "tag": "trajectory"
     },
     {

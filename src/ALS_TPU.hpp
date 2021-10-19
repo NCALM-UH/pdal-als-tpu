@@ -57,7 +57,7 @@ namespace pdal {
             double m_maximumIncidenceAngle;
             bool m_includeIncidenceAngle;
             double m_noDataValue;
-            Dimension::Id m_lidarDist, m_scanAngleLR, m_scanAngleFB, m_incAngle;
+            Dimension::Id m_lidarDist, m_scanAngleRL, m_scanAngleFB, m_incAngle;
             Dimension::Id m_xVar, m_yVar, m_zVar, m_xyCov, m_xzCov, m_yzCov;
             Dimension::Id m_xStd, m_yStd, m_zStd;
             Dimension::Id m_trajX, m_trajY, m_trajZ, m_trajRoll, m_trajPitch, m_trajHeading;
