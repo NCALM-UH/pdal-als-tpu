@@ -238,10 +238,10 @@ namespace pdal
         for (PointId i = 0; i < cloud->size(); ++i)
         {
             // 1. interpolate sensor xyz and heading from trajectory points
-            double trajX, trajY, trajZ, trajHeading;
+            double trajX, trajY, trajZ, trajHeading, trajPitch;
             bool successfulInterp = linearInterpolation(
                 cloud->getFieldAs<double>(Id::GpsTime, i),
-                trajX, trajY, trajZ, trajHeading,
+                trajX, trajY, trajZ, trajHeading, trajPitch,
                 trajectory, interpIdx);
 
             if (!successfulInterp)
@@ -256,21 +256,19 @@ namespace pdal
             else
             {
                 // 2. invert for lidar distance and laser scan angle (left-right); estimate incidence angle
-                double lidarDist, scanAngleLR, incidenceAngle;
+                double lidarDist, scanAngleRL, scanAngleFB, incidenceAngle;
                 invertObservations(
                     cloud->point(i),
-                    trajX, trajY, trajZ, trajHeading,
-                    lidarDist, scanAngleLR, incidenceAngle);
+                    trajX, trajY, trajZ, trajHeading, trajPitch,
+                    lidarDist, scanAngleRL, scanAngleFB, incidenceAngle);
 
                 // 3. build observation covariance matrix
                 MatrixXd obsCovariance = observationCovariance(
                     lidarDist,
-                    scanAngleLR,
                     incidenceAngle);
 
                 // 4. zero out items that we do not estimate (roll, pitch, forward/back scan angle)
                 double trajRoll = 0.0;
-                double trajPitch = 0.0;
                 double scanAngleFB = 0.0;
                 double boreRoll = 0.0;
                 double borePitch = 0.0;
@@ -281,7 +279,7 @@ namespace pdal
 
                 // 5. propagate observation variance into point xyz covariance matrix
                 Matrix3d lidarPointCovariance = propagateCovariance(
-                    lidarDist, scanAngleLR, scanAngleFB,
+                    lidarDist, scanAngleRL, scanAngleFB,
                     trajX, trajY, trajZ,
                     trajRoll, trajPitch, trajHeading,
                     boreRoll, borePitch, boreYaw,
@@ -298,7 +296,7 @@ namespace pdal
 
                 // Temporary test output
                 cloud->setField(m_lidarDist, i, lidarDist);
-                cloud->setField(m_scanAngleLR, i, scanAngleLR * 180.0 / M_PI);
+                cloud->setField(m_scanAngleLR, i, scanAngleRL * 180.0 / M_PI);
                 cloud->setField(m_scanAngleFB, i, scanAngleFB * 180.0 / M_PI);
                 cloud->setField(m_incAngle, i, incidenceAngle * 180.0 / M_PI);
 
@@ -423,7 +421,7 @@ namespace pdal
 
 
     MatrixXd ALS_TPU::observationCovariance(
-        double lidarDist, double scanAngle, double incidenceAngle)
+        double lidarDist, double incidenceAngle)
     {
         /*
         Variance order: 
@@ -498,8 +496,10 @@ namespace pdal
 
     void ALS_TPU::invertObservations(
         PointRef cloudPoint,
-        double trajX, double trajY, double trajZ, double trajHeading,
-        double& lidarDist, double& scanAngle, double& incidenceAngle)
+        double trajX, double trajY, double trajZ,
+        double trajHeading, double trajPitch,
+        double& lidarDist, double& scanAngleRL, double& scanAngleFB,
+        double& incidenceAngle)
     {
         // lidar distance
         Vector3d laserVector;
@@ -508,31 +508,47 @@ namespace pdal
                     (cloudPoint.getFieldAs<double>(Id::Z) - trajZ);
         lidarDist = laserVector.norm();
 
-        // laser to ground surface incidence angle (degrees)
-        Vector3d normalVector;
+        // laser to ground surface incidence angle
+        Vector3d normalVector, unitLaserVector;
         normalVector << cloudPoint.getFieldAs<double>(Id::NormalX),
                         cloudPoint.getFieldAs<double>(Id::NormalY),
                         cloudPoint.getFieldAs<double>(Id::NormalZ);
-        laserVector /= lidarDist;
-        incidenceAngle = acos(-laserVector.dot(normalVector));
+        unitLaserVector = laserVector / lidarDist;
+        incidenceAngle = acos(-unitLaserVector.dot(normalVector));
         if (incidenceAngle > m_maximumIncidenceAngle)
         {
             incidenceAngle = m_maximumIncidenceAngle;
         }
 
-        // scan angle (degrees)
-        Vector3d nadirVector, headingVector, crossProduct;
-        nadirVector << 0.0, 0.0, -1.0;
-        headingVector << sin(trajHeading), cos(trajHeading), 0.0;
-        scanAngle = acos(laserVector.dot(nadirVector));
-        crossProduct = laserVector.cross(headingVector);
-        scanAngle = copysign(scanAngle, crossProduct(2));
+        // scan angles: right(+), left(-) and forward(+), back(-)
+        Vector3d unitTrajVector, unitPitchVector, unitPerpVector, perpComp, unitInComp;
+        // unit vector in direction of trajectory
+        unitTrajVector << sin(trajHeading), cos(trajHeading), 0.0;
+        // upward pointing unit pitch vector
+        unitPitchVector << 0.0, 0.0, 1.0;
+        // vector perp to plane created by trajectory and pitch vectors
+        unitPerpVector = unitTrajVector.cross(unitPitchVector);
+        // rotate unitTrajVector and unitPitchVector according to pitch angle
+        unitTrajVector = cos(trajPitch) * unitTrajVector + sin(trajPitch) * unitPerpVector;
+        unitPitchVector = cos(trajPitch) * unitPitchVector + sin(trajPitch) * unitPerpVector;
+        // laserVector component perp to plane formed by trajVector and pitchVector
+        perpComp = laserVector.dot(unitPerpVector) * unitPerpVector;
+        // subtract to get laserVector component in plane formed by trajVector and pitchVector
+        unitInComp = (laserVector - perpComp) / (laserVector - perpComp).norm();
+        // dot product to get orthogonal angle between laserVector and plane
+        scanAngleRL = acos(unitLaserVector.dot(unitInComp));
+        // dot product to get in-plane angle between laserVector and pitchVector
+        scanAngleFB = acos(unitInComp.dot(-unitPitchVector));
+        // assign correct scanAngleLR and scanAngleFB signs
+        scanAngleRL = copysign(scanAngleRL, unitLaserVector.dot(unitPerpVector));
+        scanAngleFB = copysign(scanAngleFB, unitLaserVector.dot(unitTrajVector));
     }
 
 
     bool ALS_TPU::linearInterpolation(
         double pointTime,
-        double& trajX, double& trajY, double& trajZ, double& trajHeading,
+        double& trajX, double& trajY, double& trajZ,
+        double& trajHeading, double& trajPitch,
         PointViewPtr trajectory, PointId& interpIdx)
     {
         // special case: before left end
@@ -579,6 +595,11 @@ namespace pdal
         trajHeading = (trajectory->getFieldAs<double>(Id::Azimuth, interpIdx)
         + factor * (trajectory->getFieldAs<double>(Id::Azimuth, interpIdx + 1)
         - trajectory->getFieldAs<double>(Id::Azimuth, interpIdx)))
+        * (M_PI / 180.0);
+
+        trajPitch = (trajectory->getFieldAs<double>(Id::Pitch, interpIdx)
+        + factor * (trajectory->getFieldAs<double>(Id::Pitch, interpIdx + 1)
+        - trajectory->getFieldAs<double>(Id::Pitch, interpIdx)))
         * (M_PI / 180.0);
 
         return true;

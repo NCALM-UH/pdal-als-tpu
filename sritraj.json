@@ -1,0 +1,14 @@
+[
+    {
+        "type": "readers.las",
+        "filename": "C2_L2-normal64_timesort.laz"
+    },
+    {
+        "type": "filters.sritrajectory",
+        "tag": "trajectory"
+    },
+    {
+        "type": "writers.text",
+        "filename": "C2_L2-normal64_timesort-sritraj.txt"
+    }
+]

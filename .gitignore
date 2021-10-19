@@ -1,4 +1,5 @@
 *.laz
 *.las
+*.txt
 build/
 .vscode/

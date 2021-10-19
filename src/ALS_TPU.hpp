@@ -72,14 +72,17 @@ namespace pdal {
             PointViewPtr tpu(PointViewPtr cloud, PointViewPtr trajectory);
             bool linearInterpolation(
                 double pointTime,
-                double& trajX, double& trajY, double& trajZ, double& trajHeading,
+                double& trajX, double& trajY, double& trajZ,
+                double& trajHeading, double& trajPitch,
                 PointViewPtr trajectory, PointId& interpIdx);
             void invertObservations(
                 PointRef cloudPoint,
-                double trajX, double trajY, double trajZ, double trajHeading,
-                double& lidarDist, double& scanAngle, double& incidenceAngle);
+                double trajX, double trajY, double trajZ,
+                double trajHeading, double trajPitch,
+                double& lidarDist, double& scanAngleRL, double& scanAngleFB,
+                double& incidenceAngle);
             Eigen::MatrixXd observationCovariance(
-                double lidarDist, double scanAngle, double incidenceAngle);
+                double lidarDist, double incidenceAngle);
             Eigen::Matrix3d propagateCovariance(
                 double lidarDist, double scanAngleLR, double scanAngleFB,
                 double trajX, double trajY, double trajZ,

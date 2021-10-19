@@ -8,10 +8,14 @@
         * No sensor/aircraft crab
         * Zero pitch
         * No forward/back laser emission angle
-4. Talk with Craig about what a full model should look like.
+4. Add option for users to point to a JSON file for the uncertainty set.
 5. We assume heading has already been adjusted for wander angle
+6. We assume trajectory attitude angles are in degrees (not radians).
 6. We assume beam divergence is a 1/e^2 (not 1/e) definition.
 7. Need to add a UAV and ALS generic parameter set selection.
+8. Rework my symbolic estimated comps to use all active rotations.
+9. Add option for constant forward/back laser angle (e.g., Optech Titan 532 and 1550 channels). Subtract the value from the trajectory recovered by SRI's filter.
+
 
 
 ## Updated SRI Trajectory Install Instructions
