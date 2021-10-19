@@ -520,13 +520,27 @@ namespace pdal
             incidenceAngle = m_maximumIncidenceAngle;
         }
 
-        // scan angle (degrees)
-        Vector3d nadirVector, headingVector, crossProduct;
-        nadirVector << 0.0, 0.0, -1.0;
-        headingVector << sin(trajHeading), cos(trajHeading), 0.0;
-        scanAngle = acos(laserVector.dot(nadirVector));
-        crossProduct = laserVector.cross(headingVector);
-        scanAngle = copysign(scanAngle, crossProduct(2));
+        // estimated scan angle (ignoring any forward/back angles)
+        Vector3d unitTrajVector, unitPitchVector, unitNormalVector;
+        // unit vector in direction of trajectory
+        unitTrajVector << sin(trajHeading), cos(trajHeading), 0.0;
+        // downward pointing unit pitch vector
+        unitPitchVector << 0.0, 0.0, 1.0;
+        // vector normal to plane created by trajectory and pitch vectors
+        unitNormalVector = unitTrajVector.cross(unitPitchVector);
+        // rotate unitPitchVector according to pitch angle
+        unitPitchVector = cos(trajPitch) * unitPitchVector + sin(trajPitch) * unitNormalVector;
+        // estimate scan angle as angle between laser vector and pitch vector
+        scanAngle = acos(laserVector.dot(unitPitchVector));
+        scanAngle = copysign(scanAngle, laserVector.dot(unitTrajVector));
+
+        // // scan angle (degrees)
+        // Vector3d nadirVector, headingVector, crossProduct;
+        // nadirVector << 0.0, 0.0, -1.0;
+        // headingVector << sin(trajHeading), cos(trajHeading), 0.0;
+        // scanAngle = acos(laserVector.dot(nadirVector));
+        // crossProduct = laserVector.cross(headingVector);
+        // scanAngle = copysign(scanAngle, crossProduct(2));
     }
 
 
