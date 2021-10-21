@@ -11,7 +11,7 @@
     },
     {
         "type": "filters.als_tpu",
-        "json_file": "Titan-C2-1064nm.yml",
+        "yaml_file": "Titan-C2-1064nm.yml",
         "inputs": [
             "cloud",
             "trajectory"

@@ -35,7 +35,6 @@
 #include "ALS_TPU.hpp"
 #include <math.h>
 #include <Eigen/Dense>
-#include <nlohmann/json.hpp>
 #include "yaml-cpp/yaml.h"
 #include <pdal/io/LasWriter.hpp>
 #include <pdal/io/BufferReader.hpp>
@@ -65,61 +64,65 @@ namespace pdal
     void ALS_TPU::addArgs(ProgramArgs& args)
     {
         m_profileArg = &args.add("profile", "Predefined sensor observation uncertainties", m_profile);
-        m_yamlFileArg = &args.add("json_file", "JSON file containing observation standard deviations (uncertainties)", m_yamlFile);
-
+        m_yamlFileArg = &args.add("yaml_file", "JSON file containing observation standard deviations (uncertainties)", m_yamlFile);
         args.add("include_inc_angle", "Include incidence angle in TPU computation", m_includeIncidenceAngle, true);
         args.add("max_inc_angle", "Maximum allowable incidence angle (degrees <90)", m_maximumIncidenceAngle, 85.0);
-
         args.add("no_data_value", "TPU values when trajectory information is not available", m_noDataValue, -1.0);
     }
 
 
     void ALS_TPU::initialize()
     {
-        // if (!FileUtils::fileExists(m_jsonFile))
-        //     throwError("File '" + m_jsonFile + "' does not exist");
-        
-        // std::istream* paramFile = FileUtils::openFile(m_jsonFile);
-        // if (!paramFile)
-        //     throwError("Unable to open file '" + m_jsonFile + "' ");
-        
-        // nlohmann::json params;
-        // *paramFile >> params;
-        // for (auto& entry : params.items())
-        // {
-        //     std::cout << entry.key() << ", " << entry.value() << std::endl;
-        // }
+        // do not allow both the profile and yamlfile options to be set
+        if (m_profileArg->set() && m_yamlFileArg->set())
+            throwError("Can not specify both the 'profile'and 'yaml' options.");
 
-        // exit(-1);
-
-        YAML::Node profile = YAML::LoadFile(m_jsonFile);
-        for(YAML::const_iterator it=profile.begin(); it!=profile.end(); ++it)
+        // populate the observation uncertainties
+        if (m_yamlFileArg->set())
         {
-            std::cout << it->first.as<std::string>() << ": " << it->second.as<double>() << std::endl;
+            YAML::Node profile = YAML::LoadFile(m_yamlFile);
+            for(YAML::const_iterator it=profile.begin(); it!=profile.end(); ++it)
+            {
+                std::string key =  it->first.as<std::string>();
+                double value = it->second.as<double>();
+
+                if (Utils::iequals(key, "std_lidar_range"))
+                    m_stdLidarRange = value;
+                else if (Utils::iequals(key, "std_scan_angle"))
+                    m_stdScanAngle = value;
+                else if (Utils::iequals(key, "std_sensor_xy"))
+                    m_stdSensorXy = value;
+                else if (Utils::iequals(key, "std_sensor_z"))
+                    m_stdSensorZ = value;
+                else if (Utils::iequals(key, "std_sensor_rollpitch"))
+                    m_stdSensorRollPitch = value;
+                else if (Utils::iequals(key, "std_sensor_yaw"))
+                    m_stdSensorYaw = value;
+                else if (Utils::iequals(key, "std_bore_rollpitch"))
+                    m_stdBoreRollPitch = value;
+                else if (Utils::iequals(key, "std_bore_yaw"))
+                    m_stdBoreYaw = value;
+                else if (Utils::iequals(key, "std_lever_xyz"))
+                    m_stdLeverXyz = value;
+                else if (Utils::iequals(key, "beam_divergence"))
+                    m_beamDivergence = value;
+                else
+                    throwError("Unrecognized key in YAML file.");
+            }
         }
-        exit(-1);
+        else if (m_profileArg->set())
+            setProfile();
+        else
+            throwError("The 'profile' or 'yaml' option must be specified.");
 
-
-
-        // set parameters
-        setParams();
-
-        // degrees to radians
-        m_stdScanAngle *= (M_PI / 180.0);
-        m_stdSensorRollPitch *= (M_PI / 180.0);
-        m_stdSensorYaw *= (M_PI / 180.0);
-        m_stdBoreRollPitch *= (M_PI / 180.0);
-        m_stdBoreYaw *= (M_PI / 180.0);
-        m_maximumIncidenceAngle *= (M_PI / 180.0);
-
-        // milliradians to radians
-        m_beamDivergence /= 1000;
-
-        // valid input
-        if (m_includeIncidenceAngle && (m_maximumIncidenceAngle == 0.0))
-            throwError("Maximum incidence angle must be greater than 0 degrees.");
-        if (!Utils::iequals(m_profile, "custom") && !Utils::iequals(m_profile, "titan-channel2"))
-            throwError("Invalid parameter profile designation.");
+        // standardize units
+        m_stdScanAngle *= (M_PI / 180.0);           // degrees to radians
+        m_stdSensorRollPitch *= (M_PI / 180.0);     // degrees to radians
+        m_stdSensorYaw *= (M_PI / 180.0);           // degrees to radians
+        m_stdBoreRollPitch *= (M_PI / 180.0);       // degrees to radians
+        m_stdBoreYaw *= (M_PI / 180.0);             // degrees to radians
+        m_maximumIncidenceAngle *= (M_PI / 180.0);  // degrees to radians
+        m_beamDivergence /= 1000;                   // milliradians to radians
     }
 
 
@@ -136,8 +139,8 @@ namespace pdal
         if (m_includeIncidenceAngle)
             m_incAngle = layout->registerOrAssignDim("IncidenceAngle", Type::Double);
 
-        // testing
-        m_lidarDist = layout->registerOrAssignDim("LidarDistance", Type::Double);
+        // for testing
+        m_lidarRange = layout->registerOrAssignDim("LidarRange", Type::Double);
         m_scanAngleRL = layout->registerOrAssignDim("ScanAngleRL", Type::Double);
         m_scanAngleFB = layout->registerOrAssignDim("ScanAngleFB", Type::Double);
 
@@ -181,102 +184,56 @@ namespace pdal
     }
 
 
-    void ALS_TPU::setParams()
+    void ALS_TPU::setProfile()
     {
-        // user must supply some type of observation uncertainties
-        if (!m_profileArg->set() && !m_jsonFileArg->set())
-            throwError("No observational uncertainties (standard devations) supplied.");
-
-        // can't use both a pre-built profile and a custom json file of StDevs
-        if (m_profileArg->set() && m_jsonFileArg->set())
-            throwError("Can not specify a pre-built profile and JSON file of observation uncertainties. Use one or the other.");
-
-        // // apply pre-built profile
-        // if (m_profileArg->set())
-        // {
-        //     if (Utils::iequals(m_profile, "low"))
-        //     {
-        //         m_sLidarDistance = 0.02;
-        //         // degrees (unknown, using angular resolution of 0.001 deg from
-        //         // Optech 3100 shown in Glennie's 2007 JAG paper)
-        //         m_stdScanAngle = 0.001 / sqrt(12);
-        //         // meters (datasheet, airborne PP RMS = 1 cm)
-        //         m_sSensorXY = 0.01;
-        //         // meters (datasheet, airborne PP RMS = 2 cm)
-        //         m_sSensorZ = 0.02;
-        //         // degrees (datasheet, PP RMS = 0.005 degrees)
-        //         m_stdSensorRollPitch = 0.005;
-        //         // degrees (datasheet, PP RMS = 0.007 degrees)
-        //         m_stdSensorYaw = 0.007;
-        //         // degrees (Glennie, 2007, JAG, Table 2)
-        //         m_stdBoreRollPitch = 0.001;
-        //         // degrees (Glennie, 2007, JAG, Table 2)
-        //         m_stdBoreYaw = 0.004;
-        //         // meters (conservative estimate from Glennie's 2007 JAG paper)
-        //         m_sLeverX = 0.02;
-        //         m_sLeverY = 0.02;
-        //         m_sLeverZ = 0.02;
-        //         // milliradians (datasheet, 0.35 mrad at 1/e for channel #2)
-        //         m_laserBeamDivergence = 0.35 * sqrt(2);
-        //     }
-        // }
-
-
-        // else if (Utils::iequals(m_paramProfile, "titan-channel2"))
-        // {
-        //     // Optech Titan with a Northrup Grumman LN200
-        //     // meters (datasheet)
-        //     m_sLidarDistance = 0.008;
-        //     // degrees (unknown, using angular resolution of 0.001 deg from
-        //     // Optech 3100 shown in Glennie's 2007 JAG paper)
-        //     m_stdScanAngle = 0.001 / sqrt(12);
-        //     // meters (datasheet, airborne PP RMS = 1 cm)
-        //     m_sSensorXY = 0.01;
-        //     // meters (datasheet, airborne PP RMS = 2 cm)
-        //     m_sSensorZ = 0.02;
-        //     // degrees (datasheet, PP RMS = 0.005 degrees)
-        //     m_stdSensorRollPitch = 0.005;
-        //     // degrees (datasheet, PP RMS = 0.007 degrees)
-        //     m_stdSensorYaw = 0.007;
-        //     // degrees (Glennie, 2007, JAG, Table 2)
-        //     m_stdBoreRollPitch = 0.001;
-        //     // degrees (Glennie, 2007, JAG, Table 2)
-        //     m_stdBoreYaw = 0.004;
-        //     // meters (conservative estimate from Glennie's 2007 JAG paper)
-        //     m_sLeverX = 0.02;
-        //     m_sLeverY = 0.02;
-        //     m_sLeverZ = 0.02;
-        //     // milliradians (datasheet, 0.35 mrad at 1/e for channel #2)
-        //     m_laserBeamDivergence = 0.35 * sqrt(2);
-        // }
-        // else if (Utils::iequals(m_paramProfile, "sitka"))
-        // {
-        //     // Riegl VQ-480i with an ATLANS C IMU
-        //     // meters (datasheet)
-        //     m_sLidarDistance = 0.008;
-        //     // degrees (unknown, using angular resolution of 0.001 deg from
-        //     // Optech 3100 shown in Glennie's 2007 JAG paper)
-        //     m_stdScanAngle = 0.001 / sqrt(12);
-        //     // meters (datasheet, airborne PP RMS = 1 cm)
-        //     m_sSensorXY = 0.01;
-        //     // meters (datasheet, airborne PP RMS = 2 cm)
-        //     m_sSensorZ = 0.02;
-        //     // degrees (datasheet, PP RMS = 0.005 degrees)
-        //     m_stdSensorRollPitch = 0.005;
-        //     // degrees (datasheet, PP RMS = 0.007 degrees)
-        //     m_stdSensorYaw = 0.007;
-        //     // degrees (Glennie, 2007, JAG, Table 2)
-        //     m_stdBoreRollPitch = 0.001;
-        //     // degrees (Glennie, 2007, JAG, Table 2)
-        //     m_stdBoreYaw = 0.004;
-        //     // meters (unknown, using conservative estimate from Glennie's 2007
-        //     // JAG paper)
-        //     m_sLeverX = 0.02;
-        //     m_sLeverY = 0.02;
-        //     m_sLeverZ = 0.02;
-        //     // milliradians (datasheet, 0.35 mrad at 1/e for channel #2)
-        //     m_laserBeamDivergence = 0.35 * sqrt(2);
-        // }
+        if (Utils::iequals(m_profile, "low"))
+        {
+            // meters
+            m_stdLidarRange = 0.02;
+            // degrees
+            m_stdScanAngle = 0.001 / sqrt(12);
+            // meters
+            m_stdSensorXy = 0.01;
+            // meters
+            m_stdSensorZ = 0.02;
+            // degrees
+            m_stdSensorRollPitch = 0.005;
+            // degrees
+            m_stdSensorYaw = 0.007;
+            // degrees
+            m_stdBoreRollPitch = 0.001;
+            // degrees
+            m_stdBoreYaw = 0.004;
+            // meters
+            m_stdLeverXyz = 0.02;
+            // milliradians
+            m_beamDivergence = 0.35 * sqrt(2);
+        }
+        else if (Utils::iequals(m_profile, "high"))
+        {
+            // meters
+            m_stdLidarRange = 0.02;
+            // degrees
+            m_stdScanAngle = 0.001 / sqrt(12);
+            // meters
+            m_stdSensorXy = 0.01;
+            // meters
+            m_stdSensorZ = 0.02;
+            // degrees
+            m_stdSensorRollPitch = 0.005;
+            // degrees
+            m_stdSensorYaw = 0.007;
+            // degrees
+            m_stdBoreRollPitch = 0.001;
+            // degrees
+            m_stdBoreYaw = 0.004;
+            // meters
+            m_stdLeverXyz = 0.02;
+            // milliradians
+            m_beamDivergence = 0.35 * sqrt(2);
+        }
+        else
+            throwError("Unrecognized profile");
     }
 
 
@@ -324,7 +281,7 @@ namespace pdal
                     lidarDist,
                     incidenceAngle);
 
-                // 4. zero out items that we do not estimate (roll, pitch, forward/back scan angle)
+                // 4. zero out observations that we do not estimate
                 double trajRoll = 0.0;
                 double boreRoll = 0.0;
                 double borePitch = 0.0;
@@ -351,7 +308,7 @@ namespace pdal
                 cloud->setField(m_yzCov, i, lidarPointCovariance(1, 2));
 
                 // Temporary test output
-                cloud->setField(m_lidarDist, i, lidarDist);
+                cloud->setField(m_lidarRange, i, lidarDist);
                 cloud->setField(m_scanAngleRL, i, scanAngleRL * 180.0 / M_PI);
                 cloud->setField(m_scanAngleFB, i, scanAngleFB * 180.0 / M_PI);
                 cloud->setField(m_incAngle, i, incidenceAngle * 180.0 / M_PI);
@@ -501,7 +458,7 @@ namespace pdal
             1. Applied to the lidar distance when including the incidence angle
             2. Applied to the laser direction via the scan angle. Note that beam
                divergence is the reason we have a forward/back scan angle, which
-               allows us to add the beam uncertainty in both left/right and 
+               allows us to add the beam uncertainty in both the left/right and 
                forward/back directions
         */
 
@@ -510,23 +467,23 @@ namespace pdal
         // 1. lidar distance
         if (m_includeIncidenceAngle)
         {
-            c(0, 0) = pow(m_sLidarDistance, 2.0)
+            c(0, 0) = pow(m_stdLidarRange, 2.0)
                     + pow((lidarDist * tan(incidenceAngle) * m_beamDivergence/4), 2.0);
         }
         else
         {
-            c(0, 0) = pow(m_sLidarDistance, 2.0);
+            c(0, 0) = pow(m_stdLidarRange, 2.0);
         }
         // 2. scan angle (right-left)
         c(1, 1) = pow(m_stdScanAngle, 2.0) + pow(m_beamDivergence/4, 2.0);
         // 3. scan angle (forward-back)
         c(2, 2) = pow(m_beamDivergence/4, 2.0);
         // 4. sensor x
-        c(3, 3) = pow(m_sSensorXy, 2.0);
+        c(3, 3) = pow(m_stdSensorXy, 2.0);
         // 5. sensor y
-        c(4, 4) = pow(m_sSensorXy, 2.0);
+        c(4, 4) = pow(m_stdSensorXy, 2.0);
         // 6. sensor x
-        c(5, 5) = pow(m_sSensorZ, 2.0);
+        c(5, 5) = pow(m_stdSensorZ, 2.0);
         // 7. sensor roll
         c(6, 6) = pow(m_stdSensorRollPitch, 2.0);
         // 8. sensor pitch
@@ -540,11 +497,11 @@ namespace pdal
         // 12. boresight yaw
         c(11, 11) = pow(m_stdBoreYaw, 2.0);
         // 13. lever x
-        c(12, 12) = pow(m_sLeverX, 2.0);
+        c(12, 12) = pow(m_stdLeverXyz, 2.0);
         // 14. lever y
-        c(13, 13) = pow(m_sLeverY, 2.0);
+        c(13, 13) = pow(m_stdLeverXyz, 2.0);
         // 15. lever z
-        c(14, 14) = pow(m_sLeverY, 2.0);
+        c(14, 14) = pow(m_stdLeverXyz, 2.0);
 
         return c;
     }
@@ -557,8 +514,6 @@ namespace pdal
         double& lidarDist, double& scanAngleRL, double& scanAngleFB,
         double& incidenceAngle)
     {
-        IOFormat CleanFmt(4, 0, ", ", "\n", "[", "]");
-
         Vector3d laserVector;
         laserVector << (cloudPoint.getFieldAs<double>(Id::X) - trajX),
                        (cloudPoint.getFieldAs<double>(Id::Y) - trajY),
@@ -587,7 +542,7 @@ namespace pdal
         // rotate unitPitchVector by pitch angle about the unitNormalVector
         // https://en.wikipedia.org/wiki/Rodrigues%27_rotation_formula
         unitPitchVector = cos(trajPitch) * unitPitchVector + sin(trajPitch) * unitNormalVector.cross(unitPitchVector);
-        // estimate scan angle as angle between laser vector and pitch vector
+        // estimate scan angle as angle between laser vector and the rotated pitch vector
         scanAngleRL = acos(unitLaserVector.dot(-unitPitchVector));
         // check which side of the trajectory vector the laser vector is pointing for sign
         scanAngleRL = copysign(scanAngleRL, unitLaserVector.dot(unitNormalVector));
