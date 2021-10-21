@@ -1,11 +1,9 @@
 1. The interpolation is expected to be most efficient when the point cloud is sorted by time.
-2. I need to check that there are point normals already computed if the incidence angle error option is being used.
-    * Did not find a clean way to do this, so letting this slide. 
-3. I am ignoring any forward/back scan angle for now in terms of inverting/recovering them.
+2. I am ignoring any forward/back scan angle for now in terms of inverting/recovering them.
     * However, we know two of the Titan channels have a fixed forward/back angle.
     * But the SRI trajectory will interpret that as pitch. Would like to address that first. Could just subtract a user-supplied constant forward/back angle from the trajectory pitch. But would be better, IMO, to add an option to SRI's trajectory filter to do this so the trajectory pitch values are correct. We could then recover the forward/back scan angle in the observation inversion function.
     * The forward/back scan angle is included (all zero values for now) in order to insert beam divergence error in a direction orthogonal to the scanning direction.
-    * We do not estimate/add/insert an observation uncertainty on the forward/back scan angle as it almost perfectly correlated with boresight pitch.
+    * We do not estimate/add/insert an observation uncertainty on the forward/back scan angle as it almost perfectly correlated with boresight pitch and any uncertainty should be contained therein.
 4. Add option for users to point to a JSON file for the uncertainty set.
 5. We assume heading has already been adjusted for wander angle
 6. We assume trajectory attitude angles are in degrees (not radians).
@@ -44,4 +42,9 @@ make -j4
 make install
 conda env config vars set SRI_TRAJECTORY_CONFIG_DIR="${CONDA_PREFIX}/resources/trajectory"
 pdal --drivers | grep trajectory
+```
+
+We also need nlohmann's json library
+```
+conda install -c conda-forge nlohmann_json
 ```

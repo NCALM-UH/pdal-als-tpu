@@ -1,7 +1,7 @@
 [
     {
         "type": "readers.las",
-        "filename": "test_uh.las",
+        "filename": "test_uh-sorted-normal64.las",
         "tag": "cloud"
     },
     {
@@ -11,7 +11,7 @@
     },
     {
         "type": "filters.als_tpu",
-        "profile": "titan-channel2",
+        "json_file": "Titan-C2-1064nm.yml",
         "inputs": [
             "cloud",
             "trajectory"
@@ -21,6 +21,6 @@
         "type": "writers.las",
         "minor_version": 4,
         "extra_dims": "all",
-        "filename": "test_uh-tpu.las"
+        "filename": "test_uh-sorted-normal64-tpu.las"
     }
 ]

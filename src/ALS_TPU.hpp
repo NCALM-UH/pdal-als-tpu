@@ -46,17 +46,32 @@ namespace pdal {
             std::string getName() const;
 
         private:
-            std::string m_paramProfile;
-            double m_sLidarDistance;
-            double m_sScanAngle;
-            double m_sSensorXY, m_sSensorZ;
-            double m_sSensorRollPitch, m_sSensorYaw;
-            double m_sBoreRollPitch, m_sBoreYaw;
-            double m_sLeverX, m_sLeverY, m_sLeverZ;
-            double m_laserBeamDivergence;
+            struct StDev
+            {
+                double lidarDistance = 0.0, scanAngle = 0.0;
+                double sensorXY = 0.0, sensorZ = 0.0;
+                double sensorRollPitch = 0.0, sensorYaw = 0.0;
+                double boreRollPitch = 0.0, boreYaw = 0.0;
+                double leverX = 0.0, leverY = 0.0, leverZ = 0.0;
+                double divergence = 0.0;
+            };
+
+            StDev obsStDevs;
+
+            Arg *m_profileArg, *m_yamlFileArg;
+
+            std::string m_profile, m_yamlFile;
+            double m_stdLidarRange = 0.0, m_stdScanAngle = 0.0;
+            double m_stdSensorXy = 0.0, m_stdSensorZ = 0.0;
+            double m_stdSensorRollPitch = 0.0, m_stdSensorYaw = 0.0;
+            double m_stdBoreRollPitch = 0.0, m_stdBoreYaw = 0.0;
+            double m_stdLeverXyz = 0.0;
+            double m_beamDivergence = 0.0;
+
             double m_maximumIncidenceAngle;
             bool m_includeIncidenceAngle;
             double m_noDataValue;
+            
             Dimension::Id m_lidarDist, m_scanAngleRL, m_scanAngleFB, m_incAngle;
             Dimension::Id m_xVar, m_yVar, m_zVar, m_xyCov, m_xzCov, m_yzCov;
             Dimension::Id m_xStd, m_yStd, m_zStd;
