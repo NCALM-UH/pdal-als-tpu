@@ -8,8 +8,14 @@
 4. We assume trajectory attitude angles are in degrees (not radians).
 5. Need to tell users that beam divergence is a 1/e^2 (not 1/e) definition.
 6. Need to add a UAV and ALS generic parameter set selection.
-7. Need to clean up how the yaml library is handled in the `CMakeLists.txt` file.
 8. Need to profile the code for slow spots.
+9. Note that IMU angles typically rotate you into local level. For this approximation, we are estimating "IMU angles" that rotate you into a projected XY coordinate system
+10. What we like about the combination of active rotations, an NED local level definition, and IMU axes orientation of X-forward, Y-right, Z-down.
+    * Natural Ordering: roll, pitch, heading aligns with R1(Rx), R2(Ry), R3(Rz); i.e., R1 is a function of roll, R2 is a function of pitch, and R3 is a function of heading
+    * Natural signs: roll, pitch, and heading angles are used in the rotation matrices without negation
+    * Equality of heading and yaw: Since the Z axis is downward, heading is equal to yaw (no negation necessary)
+11. What we don't like:
+    * We need to change our local level basis from NED to ENU before adding the GNSS/trajectory XYZ in the lidar equation. This adds an extra rotation matrix to the equation.
 
 
 ## Updated SRI Trajectory Install Instructions
