@@ -239,20 +239,6 @@ namespace pdal
 
     PointViewPtr ALS_TPU::tpu(PointViewPtr cloud, PointViewPtr trajectory)
     {
-        // std::cout << cloud->layout()->hasDim(Dimension::Id::NormalX) << std::endl;
-        // std::cout << m_includeIncidenceAngle << std::endl;
-
-
-        // // check for required Dimensions
-        // if (m_includeIncidenceAngle && !(
-        //         (cloud->layout()->hasDim(Dimension::Id::NormalX)) &&
-        //         (cloud->layout()->hasDim(Dimension::Id::NormalY)) &&
-        //         (cloud->layout()->hasDim(Dimension::Id::NormalZ))))
-        //     throwError("Missing point normal dimensions in input PointView");
-        
-
-        // exit(-1);
-
         PointId interpIdx = 0;
 
         // iterate over each cloud point
