@@ -17,6 +17,17 @@
 11. What we don't like:
     * We need to change our local level basis from NED to ENU before adding the GNSS/trajectory XYZ in the lidar equation. This adds an extra rotation matrix to the equation.
 
+## Procedure
+1. We will assume LAS tiles
+1. Does your scanner have a constant off-nadir angle?
+2. If ScanAngleRank is present, is the sign correct?
+    * will not know until you split into flightlines
+
+
+## Titan Channels
+* C1 = 1550nm = 3.5 degrees forward
+* C2 = 1064nm = 0 degrees (nadir)
+* C3 = 532nm = 7 degrees forward
 
 ## Updated SRI Trajectory Install Instructions
 Current instructions direct you to install dependencies into a Conda environment:

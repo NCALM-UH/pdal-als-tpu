@@ -1,0 +1,11 @@
+[
+    {
+        "type": "filters.sort",
+        "dimension": "GpsTime",
+        "order": "ASC"
+    },
+    {
+        "type": "filters.normal",
+        "knn": 64
+    }
+]

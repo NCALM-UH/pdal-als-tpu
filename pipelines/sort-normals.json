@@ -1,7 +1,7 @@
 [
     {
         "type": "readers.las",
-        "filename": "test_uh.las"
+        "filename": "clouds/C3_L2_s-Clip.las"
     },
     {
         "type": "filters.sort",
@@ -16,7 +16,7 @@
         "type": "writers.las",
         "minor_version": 4,
         "extra_dims": "all",
-        "filename": "test_uh-sorted-normal64.las"
+        "filename": "clouds/C3_L2_s-Clip-sorted-normal64.las"
     }
 
 ]

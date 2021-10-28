@@ -3,3 +3,5 @@
 *.txt
 build/
 .vscode/
+clouds/
+trajectories/
