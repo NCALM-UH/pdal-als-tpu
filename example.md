@@ -104,4 +104,319 @@ In order to include the influence of the laser ray to ground surface incidence a
 
 ### 4. Flightline Extraction
 
-First merge all tiles
+We'll use the the `PointSourceId` field contains the flightline number, so we can Each point is taggThere are a few ways to First merge all tiles
+```
+(pdal) pjhartze@GSE-10:/mnt/f/uh$ mkdir merged
+(pdal) pjhartze@GSE-10:/mnt/f/uh$ tree -d
+.
+├── merged
+└── tiles
+    ├── ept
+    │   ├── ept-data
+    │   ├── ept-hierarchy
+    │   └── ept-sources
+    ├── las
+    ├── laz
+    └── laz-normal
+(pdal) pjhartze@GSE-10:/mnt/f/uh$ echo '{ "pipeline": [ "./tiles/laz-normal/*.laz", { "type":"writers.las", "filename":"./merged/normal.laz", "minor_version":4, "extra_dims":"all" } ] }' | pdal pipeline --stdin
+```
+
+We know from our data exploration that the `PointSourceId` field contains the flightline numbers. We can get a list of the flightlines with PDAL's `info` command:
+```
+(pdal) pjhartze@GSE-10:/mnt/f/uh$ pdal info ./merged/normal.laz --enumerate "PointSourceId"
+{
+  "file_size": 4439599570,
+  "filename": "./merged/normal.laz",
+  "now": "2021-10-30T22:10:00-0400",
+  "pdal_version": "2.3.0 (git-version: 43197e)",
+  "reader": "readers.las",
+  "stats":
+  {
+    "bbox":
+    {
+      "EPSG:4326":
+      {
+        "bbox":
+        {
+          "maxx": -95.3130282,
+          "maxy": 29.73713743,
+          "maxz": 219.95,
+          "minx": -95.36775693,
+          "miny": 29.70779386,
+          "minz": -113.71
+        },
+        "boundary": { "type": "Polygon", "coordinates": [ [ [ -95.367090313483885, 29.707793855243175, -113.71 ], [ -95.367756928931357, 29.736180546330861, -113.71 ], [ -95.313679625043022, 29.737137428570652, 219.95 ], [ -95.313028200965121, 29.708749642515375, 219.95 ], [ -95.367090313483885, 29.707793855243175, -113.71 ] ] ] }
+      },
+      "native":
+      {
+        "bbox":
+        {
+          "maxx": 276234.09,
+          "maxy": 3291900.42,
+          "maxz": 219.95,
+          "minx": 271000.36,
+          "miny": 3288752.38,
+          "minz": -113.71
+        },
+        "boundary": { "type": "Polygon", "coordinates": [ [ [ 271000.35999999998603, 3288752.379999999888241, -113.71 ], [ 271000.35999999998603, 3291900.42, -113.71 ], [ 276234.090000000025611, 3291900.42, 219.95 ], [ 276234.090000000025611, 3288752.379999999888241, 219.95 ], [ 271000.35999999998603, 3288752.379999999888241, -113.71 ] ] ] }
+      }
+    },
+    "statistic":
+    [
+      {
+        "average": 273576.1627,
+        "count": 355211315,
+        "maximum": 276234.09,
+        "minimum": 271000.36,
+        "name": "X",
+        "position": 0,
+        "stddev": 1231.919901,
+        "variance": 1517626.643
+      },
+      {
+        "average": 3290219.814,
+        "count": 355211315,
+        "maximum": 3291900.42,
+        "minimum": 3288752.38,
+        "name": "Y",
+        "position": 1,
+        "stddev": 563.8214184,
+        "variance": 317894.5918
+      },
+      {
+        "average": -12.57677251,
+        "count": 355211315,
+        "maximum": 219.95,
+        "minimum": -113.71,
+        "name": "Z",
+        "position": 2,
+        "stddev": 5.215434469,
+        "variance": 27.2007567
+      },
+      {
+        "average": 1532.455386,
+        "count": 355211315,
+        "maximum": 65520,
+        "minimum": 16,
+        "name": "Intensity",
+        "position": 3,
+        "stddev": 1487.738875,
+        "variance": 2213366.959
+      },
+      {
+        "average": 1.335397593,
+        "count": 355211315,
+        "maximum": 4,
+        "minimum": 1,
+        "name": "ReturnNumber",
+        "position": 4,
+        "stddev": 0.6874446773,
+        "variance": 0.4725801844
+      },
+      {
+        "average": 1.670833219,
+        "count": 355211315,
+        "maximum": 4,
+        "minimum": 1,
+        "name": "NumberOfReturns",
+        "position": 5,
+        "stddev": 0.9848752227,
+        "variance": 0.9699792043
+      },
+      {
+        "average": 0.4997293287,
+        "count": 355211315,
+        "maximum": 1,
+        "minimum": 0,
+        "name": "ScanDirectionFlag",
+        "position": 6,
+        "stddev": 0.4999999274,
+        "variance": 0.2499999274
+      },
+      {
+        "average": 5.729828736e-05,
+        "count": 355211315,
+        "maximum": 1,
+        "minimum": 0,
+        "name": "EdgeOfFlightLine",
+        "position": 7,
+        "stddev": 0.007569346367,
+        "variance": 5.729500443e-05
+      },
+      {
+        "average": 2.927439507,
+        "count": 355211315,
+        "maximum": 17,
+        "minimum": 1,
+        "name": "Classification",
+        "position": 8,
+        "stddev": 4.671651239,
+        "variance": 21.8243253
+      },
+      {
+        "average": -0.17908474,
+        "count": 355211315,
+        "maximum": 33,
+        "minimum": -40,
+        "name": "ScanAngleRank",
+        "position": 9,
+        "stddev": 13.5471812,
+        "variance": 183.5261186
+      },
+      {
+        "average": 2.019363009,
+        "count": 355211315,
+        "maximum": 3,
+        "minimum": 1,
+        "name": "UserData",
+        "position": 10,
+        "stddev": 0.808540034,
+        "variance": 0.6537369865
+      },
+      {
+        "average": 574.5223646,
+        "count": 355211315,
+        "maximum": 1113,
+        "minimum": 111,
+        "name": "PointSourceId",
+        "position": 11,
+        "stddev": 307.0998069,
+        "values":
+        [
+          111,
+          112,
+          113,
+          211,
+          212,
+          213,
+          311,
+          312,
+          313,
+          411,
+          412,
+          413,
+          511,
+          512,
+          513,
+          611,
+          612,
+          613,
+          711,
+          712,
+          713,
+          811,
+          812,
+          813,
+          911,
+          912,
+          913,
+          1011,
+          1012,
+          1013,
+          1111,
+          1112,
+          1113
+        ],
+        "variance": 94310.29138
+      },
+      {
+        "average": 0,
+        "count": 355211315,
+        "maximum": 0,
+        "minimum": 0,
+        "name": "Red",
+        "position": 12,
+        "stddev": 0,
+        "variance": 0
+      },
+      {
+        "average": 0,
+        "count": 355211315,
+        "maximum": 0,
+        "minimum": 0,
+        "name": "Green",
+        "position": 13,
+        "stddev": 0,
+        "variance": 0
+      },
+      {
+        "average": 0,
+        "count": 355211315,
+        "maximum": 0,
+        "minimum": 0,
+        "name": "Blue",
+        "position": 14,
+        "stddev": 0,
+        "variance": 0
+      },
+      {
+        "average": 407936.2774,
+        "count": 355211315,
+        "maximum": 408920.504,
+        "minimum": 407107.003,
+        "name": "GpsTime",
+        "position": 15,
+        "stddev": 541.7267008,
+        "variance": 293467.8184
+      },
+      {
+        "average": 0.00232956138,
+        "count": 355211315,
+        "maximum": 1,
+        "minimum": -0.9999999404,
+        "name": "NormalX",
+        "position": 16,
+        "stddev": 0.2939775889,
+        "variance": 0.08642282279
+      },
+      {
+        "average": -0.004616250626,
+        "count": 355211315,
+        "maximum": 0.9999999404,
+        "minimum": -0.9999999404,
+        "name": "NormalY",
+        "position": 17,
+        "stddev": 0.257920775,
+        "variance": 0.06652312616
+      },
+      {
+        "average": 0.89238819,
+        "count": 355211315,
+        "maximum": 1,
+        "minimum": 1.852526488e-08,
+        "name": "NormalZ",
+        "position": 18,
+        "stddev": 0.2251013848,
+        "variance": 0.05067063343
+      }
+    ]
+  }
+}
+```
+
+Now we are ready to create flightlines:
+```
+(pdal) pjhartze@GSE-10:/mnt/f/uh$ mkdir flightlines
+(pdal) pjhartze@GSE-10:/mnt/f/uh$ tree -d
+.
+├── flightlines
+├── merged
+└── tiles
+    ├── ept
+    │   ├── ept-data
+    │   ├── ept-hierarchy
+    │   └── ept-sources
+    ├── las
+    ├── laz
+    └── laz-normal
+(pdal) pjhartze@GSE-10:/mnt/f/uh$ lines=111,112,113,211,212,213,311,312,313,411,412,413,511,512,513,611,612,613,711,712,713,811,812,813,911,912,913,1011,1012,1013,1111,1112,1113
+(pdal) pjhartze@GSE-10:/mnt/f/uh$ echo $lines | parallel -j+0 pdal translate ./merged/normal.laz ./flighlines/line-{}.laz range '--filters.range.limits="PointSourceId[{}:{}]"' '--writers.las.minor_version=4' '--writers.las.extra_dims="all"'
+
+(pdal) pjhartze@GSE-10:/mnt/f/uh$ parallel -j+0 pdal translate ./merged/normal.laz ./flightlines/line-{}.laz range '--filters.range.limits="PointSourceId[{}:{}]"' '--writers.las.minor_version=4' '--writers.las.extra_dims="all"' ::: $lines
+
+or
+
+(pdal) pjhartze@GSE-10:/mnt/f/uh$ lines=(111 112 113 211 212 213 311 312 313 411 412 413 511 512 513 611 612 613 711 712 713 811 812 813 911 912 913 1011 1012 1013 1111 1112 1113)
+(pdal) pjhartze@GSE-10:/mnt/f/uh$ printf '%s\n' "${lines[@]}" | parallel -j+0 pdal translate ./merged/normal.laz ./flightlines2/line-{}.laz range '--filters.range.limits="PointSourceId
+[{}:{}]"' '--writers.las.minor_version=4' '--writers.las.extra_dims="all"'
+```
