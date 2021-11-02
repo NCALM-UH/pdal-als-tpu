@@ -36,9 +36,11 @@ With introductory remarks out of the way, let's walk through a real-world exampl
 
 ### **2. Data Exploration**
 
+First, can we even use this data to create trajectories? Need GpsTime, NumberOfReturns, and ReturnNumber fields. If ScanAngleRank exists, check that the sign is correct. To check for existence, run a quick `pdal info` on a file... To check angle sign, we'll visualize later on and correct if necessary.
+
 The first thing we want to do is visualize the data to get some context. We can use CloudCompare or QGIS to do this. However, there are a few snags.  First, the provided LAS files do not contain a coordinate reference system (CRS). While this is not a deal breaker, it's bad form and prevents us from overlaying the provided KML boundary data. So let's use PDAL's `translate` command to add a CRS and, while we are at it, convert the files to compressed LAZ format. Based on metadata found elsewhere, we know the datum is WGS84, the projection is UTM Zone 15N, and the elevations are ellipsoidal. We'll store the LAZ files in a new directory and leave the original LAS tiles alone after this. My current directory structure is this:
 
-```
+```bash
 (pdal) pjhartze@GSE-10:/mnt/f/uh$ tree -d
 .
 └── tiles
@@ -47,7 +49,7 @@ The first thing we want to do is visualize the data to get some context. We can 
 
 Let's convert to LAZ while adding the correct CRS. We'll use GNU parallel to get more done, faster.
 
-```
+```bash
 (pdal) pjhartze@GSE-10:/mnt/f/uh$ mkdir ./tiles/laz
 (pdal) pjhartze@GSE-10:/mnt/f/uh$ tree -d
 .
@@ -60,7 +62,7 @@ Let's convert to LAZ while adding the correct CRS. We'll use GNU parallel to get
 
 The second issue is that loading millions of points into CloudCompare or QGIS can take a long time and make viewing laggy. I'd prefer to load the data into QGIS so we can easily overlay the KML of the area of interest. For this, we'll convert our LAZ data into an Entwine Point Tile (EPT) index, which will enable us to view the point cloud data inside QGIS without loading all the points at once. This will take some time, but better to burn time once than every time you want to view the data.
 
-```
+```bash
 (pdal) pjhartze@GSE-10:/mnt/f/uh$ entwine build -i ./tiles/laz -o ./tiles/ept/
 (pdal) pjhartze@GSE-10:/mnt/f/uh$ tree -d
 .
@@ -91,7 +93,7 @@ With some context on how much of the data needs to be processed (all of it), kno
 
 In order to include the influence of the laser ray to ground surface incidence angle in the TPU estimation, we need a surface normal for each point. We should also remove the in-air point returns discovered during data exploration before computing the normals. We can use PDAL to accomplish both tasks.
 
-```
+```bash
 (pdal) pjhartze@GSE-10:/mnt/f/uh$ mkdir ./tiles/laz-normal
 (pdal) pjhartze@GSE-10:/mnt/f/uh$ tree -d
 .
@@ -109,8 +111,9 @@ In order to include the influence of the laser ray to ground surface incidence a
 
 ### **4. Flightline Extraction**
 
-We know from our data exploration that each point is tagged with its flightline number in the `PointSourceId` field, so we can extract individual flightlines using PDAL's `filters.range`. We can do this for each tile and each flightline number, which will produce quite a few files given the large number of tile-flightline combinations. Or, we can merge all the tiles into a single file first and then extract each flightline in its entirety from the merged file. The former method is probably better for very large collects where merging all the tiles into a single file would create a monster that your machine can't work with. Our project is small enough (about 350 million points) that the latter brute force approach will work. For reference, I have 64GB or RAM on my machine. We'll also sort by time after the merge so that the eventual extracted flightlines are also sorted by time. This is both good form and required for the `sritrajectory` filter. Get a cup of coffee while this runs - it took 18 minutes on my machine. This is not an operation that we can run parallel.
-```
+We know from our data exploration that each point is tagged with its flightline number in the `PointSourceId` field, so we can extract individual flightlines using PDAL's `filters.range`. We can do this for each tile and each flightline number, which will produce quite a few files given the large number of tile-flightline combinations. Or, we can merge all the tiles into a single file first and then extract each flightline in its entirety from the merged file. The former method is probably better for very large collects where merging all the tiles into a single file would create a monster that your machine can't work with. Our project is small enough (about 350 million points) that the latter brute force approach will work. For reference, I have 64GB or RAM on my machine. We'll also sort by time after the merge so that the eventual extracted flightlines are also sorted by time. This is both good form and required for the `sritrajectory` filter. Get a cup of coffee while this runs - it took 18 minutes on my machine. This is not an operation we can run parallel.
+
+```bash
 (pdal) pjhartze@GSE-10:/mnt/f/uh$ mkdir merged
 (pdal) pjhartze@GSE-10:/mnt/f/uh$ tree -d
 .
@@ -126,8 +129,11 @@ We know from our data exploration that each point is tagged with its flightline 
 (pdal) pjhartze@GSE-10:/mnt/f/uh$ echo '{ "pipeline": [ "./tiles/laz-normal/*.laz", { "type":"filters.merge" }, { "type":"filters.sort", "dimension":"GpsTime" }, { "type":"writers.las", "filename":"./merged/normal.laz", "minor_version":4, "extra_dims":"all" } ] }' | pdal pipeline --stdin
 ```
 
+I typically create my pipelines in a JSON file and then call `pdal pipeline <my-pipe.json>`. But I hadn't tried the `--stdin` option before, and this seemed like a good place to use it.
+
 In order to extract by flightline, we need the flightline numbers. We can list all the flightline numbers in the merged file using PDAL's `info` command and `enumerate` option. To save space, I'm only going to show the relevant output below. The ellipses (`...`) indicate locations of the additional (not shown) output. this command also took quite some time.
-```
+
+```bash
 (pdal) pjhartze@GSE-10:/mnt/f/uh$ pdal info ./merged/normal.laz --enumerate "PointSourceId"
 ...
 
@@ -179,8 +185,9 @@ In order to extract by flightline, we need the flightline numbers. We can list a
 ...
 ```
 
-Now we are ready to extract flightlines, and once again take advantage of the `parallel` package. Note that we are using a different method for feeding arguments into `parallel`. We could generate correct `stdin` by placing the flightline numbers into an array variable and then pipe them into `parallel` via a `printf` command, but the method shown below is cleaner. Plus, we'll be using this new method again in the next step, so no sense avoiding it.
-```
+Now we are ready to extract flightlines and, once again, take advantage of the `parallel` package. Note that we are using a different method for feeding arguments into `parallel`. We could generate correct `stdin` by placing the flightline numbers into an array variable and then pipe them into `parallel` via a `printf` command, but the method shown below is cleaner. Plus, we'll be using this new method again in a later step, so no sense avoiding it.
+
+```bash
 (pdal) pjhartze@GSE-10:/mnt/f/uh$ mkdir flightlines
 (pdal) pjhartze@GSE-10:/mnt/f/uh$ tree -d
 .
@@ -195,33 +202,169 @@ Now we are ready to extract flightlines, and once again take advantage of the `p
     ├── laz
     └── laz-normal
 (pdal) pjhartze@GSE-10:/mnt/f/uh$ lines="111 112 113 211 212 213 311 312 313 411 412 413 511 512 513 611 612 613 711 712 713 811 812 813 911 912 913 1011 1012 1013 1111 1112 1113"
-(pdal) pjhartze@GSE-10:/mnt/f/uh$ parallel -j+0 pdal translate ./merged/normal.laz ./flightlines/line-{}.laz range '--filters.range.limits="PointSourceId[{}:{}]"' '--writers.las.minor_version=4' '--writers.las.extra_dims="all"' ::: $lines
+(pdal) pjhartze@GSE-10:/mnt/f/uh$ parallel -j+0 pdal translate ./merged/normal.laz ./flightlines/{}.laz range '--filters.range.limits="PointSourceId[{}:{}]"' '--writers.las.minor_version=4' '--writers.las.extra_dims="all"' ::: $lines
 ```
 
-We also need to sort the flightline data by time - it's good form and because the trajectory creation filter requires it. I attempted to add a `filters.sort` to the prior command after the `range` filter, but it consistently broke WSL2, so I ran it separately.
-```
-(pdal) pjhartze@GSE-10:/mnt/f/uh$ ls ./trajectories/*.laz | parallel pdal translate {} {} sort '--filters.sort.dimension="GpsTime"
+Let's take a look at an extracted flightline to make sure things look reasonable and also, as discussed previously in the Data Exploration section, check that the `ScanAngleRank` rank sign is correct. We'll drag flightline 111 into CloudCompare and color the points by the `GpsTime` field.
+
+![](img/flightline111-GpsTime.png)
+
+Yep, that looks like a flightline, and we can see that the aircraft was moving from right to left (west). Now let's color the points by `ScanAngleRank`.
+
+![](img/flightline111-ScanAngleRank.png)
+
+Uh-oh. Per the [ASPRS LAS specification](http://www.asprs.org/wp-content/uploads/2019/03/LAS_1_4_r14.pdf), negative scan angles should be to left side of the aircraft, or downward in this image. These angles are reversed. We need to correct the angles since `filters.sritrajectory` makes use of them (you'll end up with incorrect `Azimuth` and `Pitch` values). We'll do this by multiplying the `ScanAngleRank` field of each point by `-1`. We'll move the existing, incorrect flightlines to a new `temp` folder first. PDAL does not allow us to correct the files "in place" (same input and output name and location). We either need to give the output file a different name than the input file or put it in a different location. In this case we'll put it in a different location and delete them when we are finished.
+
+```bash
+(pdal) pjhartze@GSE-10:/mnt/f/uh$ mkdir ./flightlines/temp
+(pdal) pjhartze@GSE-10:/mnt/f/uh$ mv ./flightlines/*.laz ./flightlines/temp/
+(pdal) pjhartze@GSE-10:/mnt/f/uh$ ls ./flightlines/temp/*.laz | parallel -j+0 pdal translate {} ./flightlines/{/} assign '--filters.assign.value="ScanAngleRank=ScanAngleRank*(-1)"' '--writers.las.minor_version=4' '--writers.las.extra_dims="all"'
+(pdal) pjhartze@GSE-10:/mnt/f/uh$ rm -r ./flightlines/temp
 ```
 
-Perhaps it would have been better to run sort when creating the merged file - yes, I think it would have been. :-)
+Now the `ScanAngleRank` field is correct.
+
+![](img/flightline111-ScanAngleRank-corrected.png)
 
 ### **5. Trajectory Creation**
 
-We will only create trajectories for channel 2, which is nadir looking. The other channels have a constant forward-looking angle that `filters.sritrajectory` will incorrectly interpret as a sensor pitch value. The channel number is actually the last digit of the each flightline number. For example, flightline 211 is actually line 21, channel 1; flightline 212 is line 21, channel 2; and flightline 213 is line 21, channel 3. Note that I've switched to a new Conda environment where I have the `sritrajectory` plugin installed.
-```
+We need a trajectory for each flightline in order to generate TPU for each point. However, as noted previously, the Optech Titan is a three channel system, and each channel was extracted into its own flightline in the prior step. The channel number is actually the last digit of the each flightline number. For example, flightline 211 is actually flightline 21, channel 1; flightline 212 is also flightline 21, but channel 2; and, similarly, flightline 213 is flightline 21, channel 3. Therefore, only one trajectory is required for the three channels on each flightline. We will create trajectories using channel 2 data since it is nadir looking. The other channels have a constant forward-looking angle that `filters.sritrajectory` will incorrectly interpret as a sensor pitch value. Note that I've switched to a new Conda environment into which I've previously installed the `filters.sritrajectory` plugin.
+
+```bash
 (pdal) pjhartze@GSE-10:/mnt/f/uh$ mkdir trajectories
-(pdal) pjhartze@GSE-10:/mnt/f/uh$ tree -d
+(pdal) pjhartze@GSE-10:/mnt/f/uh$ tree -d -L 2
 .
 ├── flightlines
 ├── merged
 ├── tiles
 │   ├── ept
-│   │   ├── ept-data
-│   │   ├── ept-hierarchy
-│   │   └── ept-sources
 │   ├── las
 │   ├── laz
 │   └── laz-normal
 └── trajectories
 (pdal) pjhartze@GSE-10:/mnt/f/uh$ conda activate pdal-als-tpu
-(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ ls ./flightlines/*2.laz | parallel pdal translate {} ./trajectories/{/.}-trajectory.txt sritrajectory '--writers.text.order="X,Y,Z,Roll,Pitch,Heading"'
+(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ ls ./flightlines/*2.laz | parallel pdal translate {} ./trajectories/{/.}.txt sritrajectory '--writers.text.order="GpsTime,X,Y,Z,Pitch,Azimuth"' '--writers.text.keep_unspecified="false"'
+```
+
+NEED TO VISUALIZE THE TRAJECTORY
+
+### **6. Per-Point TPU**
+
+Now we can work on generating the per-point TPU information for each flightline. Let's create some directories for the TPU data.
+
+```bash
+(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ mkdir tpu
+(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ mkdir ./tpu/flightlines
+(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ tree -d -L 2
+.
+├── flightlines
+├── merged
+├── tiles
+│   ├── ept
+│   ├── las
+│   ├── laz
+│   └── laz-normal
+├── tpu
+│   └── flightlines
+└── trajectories
+```
+
+Now Let's create a PDAL pipeline for the TPU filter. I've saved this as `./tpu/tpu.json` .
+
+```json
+[
+    {
+        "type": "readers.las",
+        "tag": "cloud",
+        "filename": ""
+    },
+    {
+        "type": "readers.text",
+        "tag": "trajectory",
+        "filename": ""
+    },
+    {
+        "type": "filters.als_tpu",
+        "yaml_file": "",
+        "inputs": [
+            "cloud",
+            "trajectory"
+        ]
+    },
+    {
+        "type": "writers.las",
+        "minor_version": 4,
+        "extra_dims": "all",
+        "filename": ""
+    }
+]
+```
+
+Note all the blank filenames! The `readers.las`, `readers.text`, and `writers.las` filenames and the YAML filename in `filters.als_tpu` are all blank. We'll override all these blank values when calling the pipeline. Setting it up this way allows us to run things in parallel. 
+
+Recall that we have a list of the flightline numbers in the `lines` variable.
+
+```bash
+(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ echo $lines
+111 112 113 211 212 213 311 312 313 411 412 413 511 512 513 611 612 613 711 712 713 811 812 813 911 912 913 1011 1012 1013 1111 1112 1113
+```
+
+We'll create two more variables to help us feed the `parallel` package.
+
+```bash
+(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ trajectories="112 112 112 212 212 212 312 312 312 412 412 412 512 512 512 612 612 612 712 712 712 812 812 812 912 912 912 1012 1012 1012 1112 1112 1112"
+(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ channels="C1 C2 C3 C1 C2 C3 C1 C2 C3 C1 C2 C3 C1 C2 C3 C1 C2 C3 C1 C2 C3 C1 C2 C3 C1 C2 C3 C1 C2 C3 C1 C2 C3"
+```
+
+The `trajectories` variable contains the trajectory name that will be used for each corresponding flightline number, hence the repetition (each of the three channels will use the same trajectory). The `channels` variable will be used to specify the appropriate YAML file that contains the sensor measurement uncertainty parameters. Since we have three channels, and their paramaters are not all identical, we have three YAML files. Here is the YAML file for channel 2 (the others are in the GitHub repository).
+
+```yaml
+# Optech Titan (1064nm channel, nadir looking) with a Northrup Grumman LN200
+
+# meters (Titan datasheet)
+std_lidar_range: 0.008
+# degrees (unknown, using angular resolution of 0.001 deg from Optech 3100 shown in Glennie's 2007 JAG paper)
+std_scan_angle: 0.001
+# meters (LN200 datasheet, airborne PP RMS = 0.01 meters)
+std_sensor_xy: 0.01
+# meters (LN200 datasheet, airborne PP RMS = 0.02 meters)
+std_sensor_z: 0.02
+# degrees (LN200 datasheet, PP RMS = 0.005 degrees)
+std_sensor_rollpitch: 0.005
+# degrees (LN200 datasheet, PP RMS = 0.007 degrees)
+std_sensor_yaw: 0.007
+# degrees (Glennie, 2007, JAG, Table 2)
+std_bore_rollpitch: 0.001
+# degrees (Glennie, 2007, JAG, Table 2)
+std_bore_yaw: 0.004
+# meters (conservative estimate from Glennie's 2007 JAG paper)
+std_lever_xyz: 0.02
+# milliradians (Titan datasheet: 0.35 mrad at 1/e * sqrt(2) = 0.49 mrad at 1/e^2)
+beam_divergence: 0.49
+```
+
+I've created a directory for the YAML files.
+
+```
+(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ mkdir ./tpu/sensor-profiles
+(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ tree -d -L 2
+.
+├── flightlines
+├── merged
+├── tiles
+│   ├── ept
+│   ├── las
+│   ├── laz
+│   └── laz-normal
+├── tpu
+│   ├── flightlines
+│   └── sensor-profiles
+└── trajectories
+```
+
+OK, now we're ready to generate TPU. At last.
+
+```bash
+(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ parallel -j+0 pdal pipeline ./tpu/tpu.json '--stage.cloud.filename="./flightlines/{1}.laz"' '--stage.trajectory.filename="./trajectories/{2}.txt"' '--filters.als_tpu.yaml_file="./tpu/sensor-profiles/{3}.yml"' '--writers.las.filename="./tpu/flightlines/{1}.laz"' '--writers.las.minor_version=4' '--writers.las.extra_dims="all"' ::: $lines :::+ $trajectories :::+ $channels
+```
+

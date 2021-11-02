@@ -1,4 +1,4 @@
-# Optech Titan (1064nm channel, nadir looking) with a Northrup Grumman LN200
+# Optech Titan (1550nm channel, 3.5 degrees forward looking) with a Northrup Grumman LN200
 
 # meters (Titan datasheet)
 std_lidar_range: 0.008

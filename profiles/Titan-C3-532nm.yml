@@ -1,4 +1,4 @@
-# Optech Titan (1064nm channel, nadir looking) with a Northrup Grumman LN200
+# Optech Titan (532nm channel, 7 degrees forward looking) with a Northrup Grumman LN200
 
 # meters (Titan datasheet)
 std_lidar_range: 0.008
@@ -18,5 +18,5 @@ std_bore_rollpitch: 0.001
 std_bore_yaw: 0.004
 # meters (conservative estimate from Glennie's 2007 JAG paper)
 std_lever_xyz: 0.02
-# milliradians (Titan datasheet: 0.35 mrad at 1/e * sqrt(2) = 0.49 mrad at 1/e^2)
-beam_divergence: 0.49
+# milliradians (Titan datasheet: 0.7 mrad at 1/e * sqrt(2) = 0.99 mrad at 1/e^2)
+beam_divergence: 0.99
