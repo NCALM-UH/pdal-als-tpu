@@ -1,21 +1,23 @@
 # ALS TPU from Point Clouds
 
+![](img/flightline111-StdZ-large.png)
+
 ## Motivation
 
 Generating total propagated uncertainty (TPU), also referred to as "propagated error", for airborne laser scanning (ALS) point cloud data requires knowledge of the ALS measurements necessary to compute the ground coordinates, the measurement uncertainties (expressed as standard deviations), and the ALS sensor model. The ALS measurements (or "observations") consist of: 
 
-    - Lidar range
-    - Scanner angle
-    - Sensor location (e.g., llh, xyz)
-    - Sensor attitude (roll, pitch, heading)
-    - Axes misalignment between the scanner and IMU (boresight roll, pitch, heading)
-    - Relative location between the scanner and IMU (lever arm xyz)
+- Lidar range
+- Scanner angle
+- Sensor location (e.g., llh, xyz)
+- Sensor attitude (roll, pitch, heading)
+- Axes misalignment between the scanner and IMU (boresight roll, pitch, heading)
+- Relative location between the scanner and IMU (lever arm xyz)
 
-Note that each measurement also needs a corresponding estimated uncertainty. The ALS sensor model refers to items such as the inertial motion unit (IMU), scanner, and local level reference frame definitions, and rotation types and orders for the boresight and IMU angles. Together, the measurement and sensor model information enable us to generate the point cloud coordinates using the standard lidar equation:
+Note that each measurement also needs a corresponding estimated uncertainty. The ALS sensor model refers to items such as the inertial motion unit (IMU), scanner, and local level reference frame definitions, and rotation types and orders for the boresight and IMU angles. Together, the measurement and sensor model information enable us to generate the point cloud coordinates using the standard ALS ground coordinate equation:
 
 ![](img/LidarEqn.svg)
 
-We use the lidar equation to propagate the measurement uncertainties into covariance matrices for each point via the General Law Of Propagation of Variance (GLOPOV).
+We use the ALS ground coordinate equation to propagate the measurement uncertainties into covariance matrices for each ground point via the General Law Of Propagation of Variance (GLOPOV).
 
 The above summary should, hopefully, make obvious the challenge that geospatial practitioners face when per-point ALS TPU is desired for a point cloud dataset. Neither the ALS observations nor the sensor model information is typically available, and even if it were, a non-trivial algorithm would need to be developed to generate the TPU.
 
@@ -33,7 +35,7 @@ With introductory remarks out of the way, let's walk through a real-world exampl
 
 ![area-of-interest](img/area-of-interest.png)
 
-Before we get going, a word of caution about this example. It uses data from a triple channel (i.e., three lasers) ALS sensor, the Optech Titan. This makes some of the processing steps more complex than a traditional single channel ALS sensor.
+Before we get going, a word of caution about this example. It uses data from a triple channel (i.e., three laser) ALS sensor, the Optech Titan. This makes some of the processing steps more complex than a traditional single channel ALS sensor.
 
 ### **1. Prerequisites**
 
@@ -163,7 +165,7 @@ Uh-oh. There is none. Note the missing `srs` (SRS = Spatial Reference System = C
 └── tiles
     ├── las
     └── laz
-(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ ls ./tiles/las/*.las | parallel pdal translate {} ./tiles/laz/{/.}.laz --readers.las.override_srs=epsg:32615
+(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ ls ./tiles/las/*.las | parallel -j+0 pdal translate {} ./tiles/laz/{/.}.laz --readers.las.override_srs=epsg:32615
 
 ```
 
@@ -212,7 +214,7 @@ In order to include the influence of the laser ray to ground surface incidence a
     ├── laz
     │   └── ept
     └── laz-normal
-(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ ls ./tiles/laz/*.laz | parallel pdal translate {} ./tiles/laz-normal/{/.}-normal.laz range normal '--filters.range.limits="Classification![0:0]"' '--filters.normal.knn=64' '--writers.las.minor_version=4' '--writers.las.extra_dims="NormalX=float,NormalY=float,NormalZ=float"'
+(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ ls ./tiles/laz/*.laz | parallel -j+0 pdal translate {} ./tiles/laz-normal/{/.}-normal.laz range normal '--filters.range.limits="Classification![0:0]"' '--filters.normal.knn=64' '--writers.las.minor_version=4' '--writers.las.extra_dims="NormalX=float,NormalY=float,NormalZ=float"'
 ```
 
 ### **5. Flightline Extraction**
@@ -299,7 +301,7 @@ Now we are ready to extract flightlines. Note that we are using a different meth
     ├── laz
     │   └── ept
     └── laz-normal
-(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ parallel -j pdal translate ./tiles/laz-normal/merged-normal.laz ./flightlines/{}.laz range '--filters.range.limits="PointSourceId[{}:{}]"' '--writers.las.minor_version=4' '--writers.las.extra_dims="all"' ::: $lines
+(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ parallel -j+0 pdal translate ./tiles/laz-normal/merged-normal.laz ./flightlines/{}.laz range '--filters.range.limits="PointSourceId[{}:{}]"' '--writers.las.minor_version=4' '--writers.las.extra_dims="all"' ::: $lines
 ```
 
 Let's take a look at an extracted flightline to make sure things look reasonable and also, as discussed previously in the Data Check and Cleaning step, check that the signs of the `ScanAngleRank` values are correct. Let's open flightline 111 in CloudCompare and color the points by the `GpsTime` field.
@@ -315,7 +317,7 @@ Uh-oh. Per the [ASPRS LAS specification](http://www.asprs.org/wp-content/uploads
 ```bash
 (pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ mkdir ./flightlines/temp
 (pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ mv ./flightlines/*.laz ./flightlines/temp/
-(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ ls ./flightlines/temp/*.laz | parallel pdal translate {} ./flightlines/{/} assign '--filters.assign.value="ScanAngleRank=ScanAngleRank*(-1)"' '--writers.las.minor_version=4' '--writers.las.extra_dims="all"'
+(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ ls ./flightlines/temp/*.laz | parallel -j+0 pdal translate {} ./flightlines/{/} assign '--filters.assign.value="ScanAngleRank=ScanAngleRank*(-1)"' '--writers.las.minor_version=4' '--writers.las.extra_dims="all"'
 (pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ rm -r ./flightlines/temp
 ```
 
@@ -338,7 +340,7 @@ We need a trajectory for each flightline in order to generate TPU for each point
 │   │   └── ept
 │   └── laz-normal
 └── trajectories
-(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ ls ./flightlines/*2.laz | parallel pdal translate {} ./trajectories/{/.}.txt sritrajectory '--writers.text.order="GpsTime,X,Y,Z,Pitch,Azimuth"' '--writers.text.keep_unspecified="false"'
+(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ ls ./flightlines/*2.laz | parallel -j+0 pdal translate {} ./trajectories/{/.}.txt sritrajectory '--writers.text.order="GpsTime,X,Y,Z,Pitch,Azimuth"' '--writers.text.keep_unspecified="false"'
 ```
 
 Let's open the trajectory for flightline 112 in CloudCompare (the point cloud for flightline 111 is already loaded) and view from the side.
@@ -448,7 +450,7 @@ The `trajectories` variable contains the trajectory name that will be used for e
 OK, now we're ready to generate TPU. At last.
 
 ```bash
-(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ parallel pdal pipeline ./tpu/tpu.json '--stage.cloud.filename="./flightlines/{1}.laz"' '--stage.trajectory.filename="./trajectories/{2}.txt"' '--filters.als_tpu.yaml_file="./tpu/sensor-profiles/{3}.yml"' '--writers.las.filename="./tpu/flightlines/{1}.laz"' '--writers.las.minor_version=4' '--writers.las.extra_dims="all"' ::: $lines :::+ $trajectories :::+ $channels
+(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ parallel -j+0 pdal pipeline ./tpu/tpu.json '--stage.cloud.filename="./flightlines/{1}.laz"' '--stage.trajectory.filename="./trajectories/{2}.txt"' '--filters.als_tpu.yaml_file="./tpu/sensor-profiles/{3}.yml"' '--writers.las.filename="./tpu/flightlines/{1}.laz"' '--writers.las.minor_version=4' '--writers.las.extra_dims="all"' ::: $lines :::+ $trajectories :::+ $channels
 ```
 
 Let's take a look at the X-, Y-, and Z-component TPU (standard deviations) for flightline 111 in CloudCompare. They look reasonable. The color stretches are 0.08-0.10 meters for `StdX`, 0.08-0.10 meters for `StdY`, and 0.03-0.09 meters for `StdZ` (CloudCompare's color bars are not very informative if you make large adjustments to the stretch).
@@ -457,15 +459,66 @@ Let's take a look at the X-, Y-, and Z-component TPU (standard deviations) for f
 ![](img/flightline111-StdY.png)
 ![](img/flightline111-StdZ.png)
 
-To finishFinally, let's re-tile the flightline TPU point clouds and then crop the tiles to the desired boundary. We'll deliver both the complete and cropped tile sets to our colleague. We'll tile the data using the same grid divisions as the original data by setting the `origin_x`, `origin_y`, and `length` options.
-
-```
-mkdir ./tpu/tiles
-tree -d -L 2
-
-pdal tile ./tpu/flightlines/*.laz ./tpu/tiles/tpu-#.laz
-```
+To finish, let's re-tile the flightline TPU point clouds and then crop the tiles to the desired boundary. We'll deliver both the complete and cropped tile sets to our colleague. Be prepared to wait - the tiling took about 70 minutes on my machine.
 
 ```bash
-ls ./tpu/tiles/*.laz | parallel pdal translate {} ./tpu/tiles/cropped-{/.}.laz crop '--filters.crop.bounds="([xmin, xmax], [ymin, ymax])"' '--filters.crop.a_srs="epsg:4326"'
+(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ mkdir ./tpu/tiles
+(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ mkdir ./tpu/tiles-cropped
+(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ tree -d -L 3
+.
+├── flightlines
+├── tiles
+│   ├── las
+│   ├── laz
+│   │   └── ept
+│   └── laz-normal
+├── tpu
+│   ├── flightlines
+│   ├── sensor-profiles
+│   ├── tiles
+│   └── tiles-cropped
+└── trajectories
+(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ pdal tile "./tpu/flightlines/*.laz" "./tpu/tiles/tpu-#.laz" --origin_x="271000" --origin_y="3288000" --length="1000" --writers.las.minor_version="4" --writers.las.extra_dims="NormalX=float,NormalY=float,NormalZ=float,StdX=float,StdY=float,StdZ=float,VarianceX=float,VarianceY=float,VarianceZ=float,CovarianceXY=float,CovarianceXZ=float,CovarianceYZ=float"
 ```
+
+I wrote a small Python script to convert the tile labels from an `Xoffset_Yoffset` index pattern to an `Xcoordinate_Ycoordinate` coordinate pattern to match the original tile names.
+
+```python
+import os
+import re
+
+for filename in os.listdir("."):
+    if filename.startswith("tpu"):
+        x_pattern = "-(.*?)_"
+        y_pattern = "_(.*?)\."
+        x = re.search(x_pattern, filename).group(1)
+        y = re.search(y_pattern, filename).group(1)
+
+        x_new = 271000 + int(x) * 1000
+        y_new = 3289000 + int(y) * 1000
+
+        os.rename(filename, f"tpu-{x_new}_{y_new}.laz")
+```
+
+Finally, let's crop the TPU tiles to the requested boundary and built a new EPT index to view the cropped data in QGIS.
+
+```bash
+(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ ls ./tpu/tiles/*.laz | parallel -j+0 pdal translate {} ./tpu/tiles-cropped/{/} crop '--filters.crop.polygon="POLYGON((-95.3626777088979 29.7299851318979, -95.3200545956866 29.7304501531127, -95.3194574429247 29.7135007355585, -95.3622914533177 29.7135025021551, -95.3626777088979 29.7299851318979))"' '--filters.crop.a_srs="epsg:4326"' '--writers.las.minor_version=4' '--writers.las.extra_dims="all"'
+(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ entwine build -i ./tpu/tiles-cropped -o ./tpu/tiles-cropped/ept
+(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ tree -d -L 3
+
+
+
+```
+
+![]()
+
+### **8. Summary**
+
+Kudos if you've made it this far. This example was complex due to:
+
+1. Data cleaning: provide missing CRS information, data compression, identification and removal of spurious in-air points, and `ScanAngleRank` sign correction.
+2. The triple channel sensor that produces three strips of data for each flightline.
+3. Data formatting: flightline extraction and re-tiling, renaming, and cropping for delivery.
+
+But it is a real-world look at how to go from a collection of point cloud tiles that have been dropped in your lap to a set of tiles - cropped to your area of interest - that contain per-point TPU information. If you are dealing with a single channel sensor and a clean set of data (perhaps even provided in flightlines rather than tiles), the TPU generation process will be much more streamlined than outlined here.
