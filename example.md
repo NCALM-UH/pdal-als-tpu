@@ -515,10 +515,10 @@ Finally, let's crop the TPU tiles to the requested boundary and built a new EPT 
 
 ### **8. Summary**
 
-Kudos if you've made it this far. This example was complex due to:
+Kudos if you've made it this far. It looks like a lot of steps to generate TPU in this example, but much of the walk-through dealt with data cleaning and formatting and the complexity due to the triple channel ALS sensor:
 
 1. Data cleaning: provide missing CRS information, data compression, identification and removal of spurious in-air points, and `ScanAngleRank` sign correction.
-2. The triple channel sensor that produces three strips of data for each flightline.
-3. Data formatting: flightline extraction and re-tiling, renaming, and cropping for delivery.
+2. Data formatting: flightline extraction and re-tiling, renaming, and cropping for delivery.
+3. Triple channel sensor: three strips of data for each flightline exist that require unique uncertainty parameters but a common trajectory.
 
-But it is a real-world look at how to go from a collection of point cloud tiles that have been dropped in your lap to a set of tiles - cropped to your area of interest - that contain per-point TPU information. If you are dealing with a single channel sensor and a clean set of data (perhaps even provided in flightlines rather than tiles), the TPU generation process will be much more streamlined than outlined here.
+But the above example is a real-world look at how to go from a collection of point data that has been dropped in your lap to a set of point cloud tiles cropped to your area of interest that contain per-point TPU information. If you are dealing with a single channel sensor and a clean set of data (perhaps even provided in flightlines rather than tiles), the TPU generation process will be much more streamlined. Refer to the [GitHub repository](https://github.com/pjhartzell/pdal-als-tpu) for the `als_tpu` PDAL plugin filter for a simple example.

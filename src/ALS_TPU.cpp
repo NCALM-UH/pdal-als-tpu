@@ -63,24 +63,25 @@ namespace pdal
 
     void ALS_TPU::addArgs(ProgramArgs& args)
     {
-        m_profileArg = &args.add("profile", "Predefined sensor observation uncertainties", m_profile);
-        m_yamlFileArg = &args.add("yaml_file", "JSON file containing observation standard deviations (uncertainties)", m_yamlFile);
+        m_profileDefArg = &args.add("profile_predefined", "Predefined sensor observation uncertainties", m_profileDef);
+        m_profileFileArg = &args.add("profile_filename", "JSON file containing observation standard deviations (uncertainties)", m_profileFile);
         args.add("include_inc_angle", "Include incidence angle in TPU computation", m_includeIncidenceAngle, true);
         args.add("max_inc_angle", "Maximum allowable incidence angle (degrees <90)", m_maximumIncidenceAngle, 85.0);
         args.add("no_data_value", "TPU values when trajectory information is not available", m_noDataValue, -1.0);
+        args.add("extended_output", "Export inverted observations, interpolated trajectory, and coordinate standard deviations", m_extendedOutput, false);
     }
 
 
     void ALS_TPU::initialize()
     {
-        // do not allow both the profile and yamlfile options to be set
-        if (m_profileArg->set() && m_yamlFileArg->set())
-            throwError("Can not specify both the 'profile'and 'yaml' options.");
+        // do not allow both predefined profile and yaml file profile options
+        if (m_profileDefArg->set() && m_profileFileArg->set())
+            throwError("Can not specify both the 'profile_predefined'and 'profile_filename' options.");
 
         // populate the observation uncertainties
-        if (m_yamlFileArg->set())
+        if (m_profileFileArg->set())
         {
-            YAML::Node profile = YAML::LoadFile(m_yamlFile);
+            YAML::Node profile = YAML::LoadFile(m_profileFile);
             for(YAML::const_iterator it=profile.begin(); it!=profile.end(); ++it)
             {
                 std::string key =  it->first.as<std::string>();
@@ -110,10 +111,10 @@ namespace pdal
                     throwError("Unrecognized key in YAML file.");
             }
         }
-        else if (m_profileArg->set())
+        else if (m_profileDefArg->set())
             setProfile();
         else
-            throwError("The 'profile' or 'yaml' option must be specified.");
+            throwError("The 'profile_predefined' or 'profile_filename' option must be specified.");
 
         // standardize units
         m_stdScanAngle *= (M_PI / 180.0);           // degrees to radians
@@ -135,25 +136,27 @@ namespace pdal
         m_xyCov = layout->registerOrAssignDim("CovarianceXY", Type::Double);
         m_xzCov = layout->registerOrAssignDim("CovarianceXZ", Type::Double);
         m_yzCov = layout->registerOrAssignDim("CovarianceYZ", Type::Double);
-
         if (m_includeIncidenceAngle)
             m_incAngle = layout->registerOrAssignDim("IncidenceAngle", Type::Double);
 
-        // for testing
-        m_lidarRange = layout->registerOrAssignDim("LidarRange", Type::Double);
-        m_scanAngleRL = layout->registerOrAssignDim("ScanAngleRL", Type::Double);
-        m_scanAngleFB = layout->registerOrAssignDim("ScanAngleFB", Type::Double);
+        // extended output
+        if (m_extendedOutput)
+        {
+            m_lidarRange = layout->registerOrAssignDim("LidarRange", Type::Double);
+            m_scanAngleRL = layout->registerOrAssignDim("ScanAngleRL", Type::Double);
+            m_scanAngleFB = layout->registerOrAssignDim("ScanAngleFB", Type::Double);
 
-        m_xStd = layout->registerOrAssignDim("StdX", Type::Double);
-        m_yStd = layout->registerOrAssignDim("StdY", Type::Double);
-        m_zStd = layout->registerOrAssignDim("StdZ", Type::Double);
+            m_xStd = layout->registerOrAssignDim("StdX", Type::Double);
+            m_yStd = layout->registerOrAssignDim("StdY", Type::Double);
+            m_zStd = layout->registerOrAssignDim("StdZ", Type::Double);
 
-        m_trajX = layout->registerOrAssignDim("TrajX", Type::Double);
-        m_trajY = layout->registerOrAssignDim("TrajY", Type::Double);
-        m_trajZ = layout->registerOrAssignDim("TrajZ", Type::Double);
-        m_trajRoll = layout->registerOrAssignDim("TrajRoll", Type::Double);
-        m_trajPitch = layout->registerOrAssignDim("TrajPitch", Type::Double);
-        m_trajHeading = layout->registerOrAssignDim("TrajHeading", Type::Double);
+            m_trajX = layout->registerOrAssignDim("TrajX", Type::Double);
+            m_trajY = layout->registerOrAssignDim("TrajY", Type::Double);
+            m_trajZ = layout->registerOrAssignDim("TrajZ", Type::Double);
+            m_trajRoll = layout->registerOrAssignDim("TrajRoll", Type::Double);
+            m_trajPitch = layout->registerOrAssignDim("TrajPitch", Type::Double);
+            m_trajHeading = layout->registerOrAssignDim("TrajHeading", Type::Double);
+        }
     }
 
 
@@ -186,7 +189,8 @@ namespace pdal
 
     void ALS_TPU::setProfile()
     {
-        if (Utils::iequals(m_profile, "low"))
+        if (Utils::iequals(m_profileDef, "low"))
+        // based on a ?? Adam??
         {
             // meters
             m_stdLidarRange = 0.02;
@@ -209,8 +213,33 @@ namespace pdal
             // milliradians
             m_beamDivergence = 0.35 * sqrt(2);
         }
-        else if (Utils::iequals(m_profile, "high"))
+        else if (Utils::iequals(m_profileDef, "medium"))
         {
+            // based on a ??
+            // meters
+            m_stdLidarRange = 0.02;
+            // degrees
+            m_stdScanAngle = 0.001 / sqrt(12);
+            // meters
+            m_stdSensorXy = 0.01;
+            // meters
+            m_stdSensorZ = 0.02;
+            // degrees
+            m_stdSensorRollPitch = 0.005;
+            // degrees
+            m_stdSensorYaw = 0.007;
+            // degrees
+            m_stdBoreRollPitch = 0.001;
+            // degrees
+            m_stdBoreYaw = 0.004;
+            // meters
+            m_stdLeverXyz = 0.02;
+            // milliradians
+            m_beamDivergence = 0.35 * sqrt(2);
+        }
+        else if (Utils::iequals(m_profileDef, "high"))
+        {
+            // based on a ??
             // meters
             m_stdLidarRange = 0.02;
             // degrees
@@ -259,6 +288,8 @@ namespace pdal
                 cloud->setField(m_xyCov, i, m_noDataValue);
                 cloud->setField(m_xzCov, i, m_noDataValue);
                 cloud->setField(m_yzCov, i, m_noDataValue);
+                if (m_includeIncidenceAngle)
+                    cloud->setField(m_incAngle, i, m_noDataValue);
             }
             else
             {
@@ -292,30 +323,34 @@ namespace pdal
                     leverX, leverY, leverZ,
                     obsCovariance);
 
-                // 6. store covariance information in new dimensions
+                // 6. standard output
                 cloud->setField(m_xVar, i, lidarPointCovariance(0, 0));
                 cloud->setField(m_yVar, i, lidarPointCovariance(1, 1));
                 cloud->setField(m_zVar, i, lidarPointCovariance(2, 2));
                 cloud->setField(m_xyCov, i, lidarPointCovariance(0, 1));
                 cloud->setField(m_xzCov, i, lidarPointCovariance(0, 2));
                 cloud->setField(m_yzCov, i, lidarPointCovariance(1, 2));
+                if (m_includeIncidenceAngle)
+                    cloud->setField(m_incAngle, i, incidenceAngle * 180.0 / M_PI);
 
-                // Temporary test output
-                cloud->setField(m_lidarRange, i, lidarDist);
-                cloud->setField(m_scanAngleRL, i, scanAngleRL * 180.0 / M_PI);
-                cloud->setField(m_scanAngleFB, i, scanAngleFB * 180.0 / M_PI);
-                cloud->setField(m_incAngle, i, incidenceAngle * 180.0 / M_PI);
+                // 7. extended output
+                if (m_extendedOutput)
+                {
+                    cloud->setField(m_lidarRange, i, lidarDist);
+                    cloud->setField(m_scanAngleRL, i, scanAngleRL * 180.0 / M_PI);
+                    cloud->setField(m_scanAngleFB, i, scanAngleFB * 180.0 / M_PI);
 
-                cloud->setField(m_xStd, i, sqrt(lidarPointCovariance(0, 0)));
-                cloud->setField(m_yStd, i, sqrt(lidarPointCovariance(1, 1)));
-                cloud->setField(m_zStd, i, sqrt(lidarPointCovariance(2, 2)));
+                    cloud->setField(m_xStd, i, sqrt(lidarPointCovariance(0, 0)));
+                    cloud->setField(m_yStd, i, sqrt(lidarPointCovariance(1, 1)));
+                    cloud->setField(m_zStd, i, sqrt(lidarPointCovariance(2, 2)));
 
-                cloud->setField(m_trajX, i, trajX);
-                cloud->setField(m_trajY, i, trajY);
-                cloud->setField(m_trajZ, i, trajZ);
-                cloud->setField(m_trajRoll, i, trajRoll * 180.0 / M_PI);
-                cloud->setField(m_trajPitch, i, trajPitch * 180.0 / M_PI);
-                cloud->setField(m_trajHeading, i, trajHeading * 180.0 / M_PI);
+                    cloud->setField(m_trajX, i, trajX);
+                    cloud->setField(m_trajY, i, trajY);
+                    cloud->setField(m_trajZ, i, trajZ);
+                    cloud->setField(m_trajRoll, i, trajRoll * 180.0 / M_PI);
+                    cloud->setField(m_trajPitch, i, trajPitch * 180.0 / M_PI);
+                    cloud->setField(m_trajHeading, i, trajHeading * 180.0 / M_PI);
+                }
             }
         }
 
@@ -331,61 +366,6 @@ namespace pdal
         double leverX, double leverY, double leverZ,
         MatrixXd obsCovariance)
     {
-        /*
-        // Jacobian matrix ordered the same as the observation covariance matrix
-        MatrixXd a = MatrixXd::Zero(3, 15);
-        // partials with respect to lidar point X
-        a(0, 0) = (sin(trajPitch)*sin(trajRoll)*sin(trajHeading) + cos(trajRoll)*cos(trajHeading))*((sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB) + (sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + sin(scanAngleFB)*sin(boreYaw)*cos(borePitch)) + (sin(trajPitch)*sin(trajHeading)*cos(trajRoll) - sin(trajRoll)*cos(trajHeading))*(-sin(borePitch)*sin(scanAngleFB) + sin(boreRoll)*sin(scanAngleRL)*cos(borePitch)*cos(scanAngleFB) + cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL)) + ((sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*sin(scanAngleRL)*cos(scanAngleFB) + (sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + sin(scanAngleFB)*cos(borePitch)*cos(boreYaw))*sin(trajHeading)*cos(trajPitch);
-        a(0, 1) = (sin(trajPitch)*sin(trajRoll)*sin(trajHeading) + cos(trajRoll)*cos(trajHeading))*(lidarDist*(sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) - lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB)) + (sin(trajPitch)*sin(trajHeading)*cos(trajRoll) - sin(trajRoll)*cos(trajHeading))*(lidarDist*sin(boreRoll)*cos(borePitch)*cos(scanAngleFB)*cos(scanAngleRL) - lidarDist*sin(scanAngleRL)*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)) + (lidarDist*(sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*cos(scanAngleFB)*cos(scanAngleRL) - lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB))*sin(trajHeading)*cos(trajPitch);
-        a(0, 2) = (sin(trajPitch)*sin(trajRoll)*sin(trajHeading) + cos(trajRoll)*cos(trajHeading))*(-lidarDist*(sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*sin(scanAngleFB)*sin(scanAngleRL) - lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*sin(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(boreYaw)*cos(borePitch)*cos(scanAngleFB)) + (sin(trajPitch)*sin(trajHeading)*cos(trajRoll) - sin(trajRoll)*cos(trajHeading))*(-lidarDist*sin(borePitch)*cos(scanAngleFB) - lidarDist*sin(boreRoll)*sin(scanAngleFB)*sin(scanAngleRL)*cos(borePitch) - lidarDist*sin(scanAngleFB)*cos(borePitch)*cos(boreRoll)*cos(scanAngleRL)) + (-lidarDist*(sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*sin(scanAngleFB)*sin(scanAngleRL) - lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*sin(scanAngleFB)*cos(scanAngleRL) + lidarDist*cos(borePitch)*cos(scanAngleFB)*cos(boreYaw))*sin(trajHeading)*cos(trajPitch);
-        a(0, 3) = 1;
-        a(0, 4) = 0;
-        a(0, 5) = 0;
-        a(0, 6) = (-sin(trajPitch)*sin(trajRoll)*sin(trajHeading) - cos(trajRoll)*cos(trajHeading))*(-lidarDist*sin(borePitch)*sin(scanAngleFB) + lidarDist*sin(boreRoll)*sin(scanAngleRL)*cos(borePitch)*cos(scanAngleFB) + lidarDist*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL) + leverZ) + (sin(trajPitch)*sin(trajHeading)*cos(trajRoll) - sin(trajRoll)*cos(trajHeading))*(lidarDist*(sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB) + lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleFB)*sin(boreYaw)*cos(borePitch) + leverY);
-        a(0, 7) = (-lidarDist*sin(borePitch)*sin(scanAngleFB) + lidarDist*sin(boreRoll)*sin(scanAngleRL)*cos(borePitch)*cos(scanAngleFB) + lidarDist*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL) + leverZ)*sin(trajHeading)*cos(trajPitch)*cos(trajRoll) + (lidarDist*(sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB) + lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleFB)*sin(boreYaw)*cos(borePitch) + leverY)*sin(trajRoll)*sin(trajHeading)*cos(trajPitch) - (lidarDist*(sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*sin(scanAngleRL)*cos(scanAngleFB) + lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleFB)*cos(borePitch)*cos(boreYaw) + leverX)*sin(trajPitch)*sin(trajHeading);
-        a(0, 8) = (sin(trajPitch)*sin(trajRoll)*cos(trajHeading) - sin(trajHeading)*cos(trajRoll))*(lidarDist*(sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB) + lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleFB)*sin(boreYaw)*cos(borePitch) + leverY) + (sin(trajPitch)*cos(trajRoll)*cos(trajHeading) + sin(trajRoll)*sin(trajHeading))*(-lidarDist*sin(borePitch)*sin(scanAngleFB) + lidarDist*sin(boreRoll)*sin(scanAngleRL)*cos(borePitch)*cos(scanAngleFB) + lidarDist*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL) + leverZ) + (lidarDist*(sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*sin(scanAngleRL)*cos(scanAngleFB) + lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleFB)*cos(borePitch)*cos(boreYaw) + leverX)*cos(trajPitch)*cos(trajHeading);
-        a(0, 9) = (sin(trajPitch)*sin(trajRoll)*sin(trajHeading) + cos(trajRoll)*cos(trajHeading))*(lidarDist*(-sin(borePitch)*sin(boreRoll)*sin(boreYaw) - cos(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB)) + (sin(trajPitch)*sin(trajHeading)*cos(trajRoll) - sin(trajRoll)*cos(trajHeading))*(-lidarDist*sin(boreRoll)*cos(borePitch)*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleRL)*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)) + (lidarDist*(-sin(borePitch)*sin(boreRoll)*cos(boreYaw) + sin(boreYaw)*cos(boreRoll))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB))*sin(trajHeading)*cos(trajPitch);
-        a(0, 10) = (sin(trajPitch)*sin(trajRoll)*sin(trajHeading) + cos(trajRoll)*cos(trajHeading))*(-lidarDist*sin(borePitch)*sin(scanAngleFB)*sin(boreYaw) + lidarDist*sin(boreRoll)*sin(scanAngleRL)*sin(boreYaw)*cos(borePitch)*cos(scanAngleFB) + lidarDist*sin(boreYaw)*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL)) + (sin(trajPitch)*sin(trajHeading)*cos(trajRoll) - sin(trajRoll)*cos(trajHeading))*(-lidarDist*sin(borePitch)*sin(boreRoll)*sin(scanAngleRL)*cos(scanAngleFB) - lidarDist*sin(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL) - lidarDist*sin(scanAngleFB)*cos(borePitch)) + (-lidarDist*sin(borePitch)*sin(scanAngleFB)*cos(boreYaw) + lidarDist*sin(boreRoll)*sin(scanAngleRL)*cos(borePitch)*cos(scanAngleFB)*cos(boreYaw) + lidarDist*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL)*cos(boreYaw))*sin(trajHeading)*cos(trajPitch);
-        a(0, 11) = (sin(trajPitch)*sin(trajRoll)*sin(trajHeading) + cos(trajRoll)*cos(trajHeading))*(lidarDist*(sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*sin(scanAngleRL)*cos(scanAngleFB) + lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleFB)*cos(borePitch)*cos(boreYaw)) + (lidarDist*(-sin(borePitch)*sin(boreRoll)*sin(boreYaw) - cos(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB) + lidarDist*(-sin(borePitch)*sin(boreYaw)*cos(boreRoll) + sin(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) - lidarDist*sin(scanAngleFB)*sin(boreYaw)*cos(borePitch))*sin(trajHeading)*cos(trajPitch);
-        a(0, 12) = sin(trajHeading)*cos(trajPitch);
-        a(0, 13) = sin(trajPitch)*sin(trajRoll)*sin(trajHeading) + cos(trajRoll)*cos(trajHeading);
-        a(0, 14) = sin(trajPitch)*sin(trajHeading)*cos(trajRoll) - sin(trajRoll)*cos(trajHeading);
-        // partials with respect to lidar point y
-        a(1, 0) = (sin(trajPitch)*sin(trajRoll)*cos(trajHeading) - sin(trajHeading)*cos(trajRoll))*((sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB) + (sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + sin(scanAngleFB)*sin(boreYaw)*cos(borePitch)) + (sin(trajPitch)*cos(trajRoll)*cos(trajHeading) + sin(trajRoll)*sin(trajHeading))*(-sin(borePitch)*sin(scanAngleFB) + sin(boreRoll)*sin(scanAngleRL)*cos(borePitch)*cos(scanAngleFB) + cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL)) + ((sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*sin(scanAngleRL)*cos(scanAngleFB) + (sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + sin(scanAngleFB)*cos(borePitch)*cos(boreYaw))*cos(trajPitch)*cos(trajHeading);
-        a(1, 1) = (sin(trajPitch)*sin(trajRoll)*cos(trajHeading) - sin(trajHeading)*cos(trajRoll))*(lidarDist*(sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) - lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB)) + (sin(trajPitch)*cos(trajRoll)*cos(trajHeading) + sin(trajRoll)*sin(trajHeading))*(lidarDist*sin(boreRoll)*cos(borePitch)*cos(scanAngleFB)*cos(scanAngleRL) - lidarDist*sin(scanAngleRL)*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)) + (lidarDist*(sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*cos(scanAngleFB)*cos(scanAngleRL) - lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB))*cos(trajPitch)*cos(trajHeading);
-        a(1, 2) = (sin(trajPitch)*sin(trajRoll)*cos(trajHeading) - sin(trajHeading)*cos(trajRoll))*(-lidarDist*(sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*sin(scanAngleFB)*sin(scanAngleRL) - lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*sin(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(boreYaw)*cos(borePitch)*cos(scanAngleFB)) + (sin(trajPitch)*cos(trajRoll)*cos(trajHeading) + sin(trajRoll)*sin(trajHeading))*(-lidarDist*sin(borePitch)*cos(scanAngleFB) - lidarDist*sin(boreRoll)*sin(scanAngleFB)*sin(scanAngleRL)*cos(borePitch) - lidarDist*sin(scanAngleFB)*cos(borePitch)*cos(boreRoll)*cos(scanAngleRL)) + (-lidarDist*(sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*sin(scanAngleFB)*sin(scanAngleRL) - lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*sin(scanAngleFB)*cos(scanAngleRL) + lidarDist*cos(borePitch)*cos(scanAngleFB)*cos(boreYaw))*cos(trajPitch)*cos(trajHeading);
-        a(1, 3) = 0;
-        a(1, 4) = 1;
-        a(1, 5) = 0;
-        a(1, 6) = (-sin(trajPitch)*sin(trajRoll)*cos(trajHeading) + sin(trajHeading)*cos(trajRoll))*(-lidarDist*sin(borePitch)*sin(scanAngleFB) + lidarDist*sin(boreRoll)*sin(scanAngleRL)*cos(borePitch)*cos(scanAngleFB) + lidarDist*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL) + leverZ) + (sin(trajPitch)*cos(trajRoll)*cos(trajHeading) + sin(trajRoll)*sin(trajHeading))*(lidarDist*(sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB) + lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleFB)*sin(boreYaw)*cos(borePitch) + leverY);
-        a(1, 7) = (-lidarDist*sin(borePitch)*sin(scanAngleFB) + lidarDist*sin(boreRoll)*sin(scanAngleRL)*cos(borePitch)*cos(scanAngleFB) + lidarDist*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL) + leverZ)*cos(trajPitch)*cos(trajRoll)*cos(trajHeading) + (lidarDist*(sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB) + lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleFB)*sin(boreYaw)*cos(borePitch) + leverY)*sin(trajRoll)*cos(trajPitch)*cos(trajHeading) - (lidarDist*(sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*sin(scanAngleRL)*cos(scanAngleFB) + lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleFB)*cos(borePitch)*cos(boreYaw) + leverX)*sin(trajPitch)*cos(trajHeading);
-        a(1, 8) = (-sin(trajPitch)*sin(trajRoll)*sin(trajHeading) - cos(trajRoll)*cos(trajHeading))*(lidarDist*(sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB) + lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleFB)*sin(boreYaw)*cos(borePitch) + leverY) + (-sin(trajPitch)*sin(trajHeading)*cos(trajRoll) + sin(trajRoll)*cos(trajHeading))*(-lidarDist*sin(borePitch)*sin(scanAngleFB) + lidarDist*sin(boreRoll)*sin(scanAngleRL)*cos(borePitch)*cos(scanAngleFB) + lidarDist*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL) + leverZ) - (lidarDist*(sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*sin(scanAngleRL)*cos(scanAngleFB) + lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleFB)*cos(borePitch)*cos(boreYaw) + leverX)*sin(trajHeading)*cos(trajPitch);
-        a(1, 9) = (sin(trajPitch)*sin(trajRoll)*cos(trajHeading) - sin(trajHeading)*cos(trajRoll))*(lidarDist*(-sin(borePitch)*sin(boreRoll)*sin(boreYaw) - cos(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB)) + (sin(trajPitch)*cos(trajRoll)*cos(trajHeading) + sin(trajRoll)*sin(trajHeading))*(-lidarDist*sin(boreRoll)*cos(borePitch)*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleRL)*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)) + (lidarDist*(-sin(borePitch)*sin(boreRoll)*cos(boreYaw) + sin(boreYaw)*cos(boreRoll))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB))*cos(trajPitch)*cos(trajHeading);
-        a(1, 10) = (sin(trajPitch)*sin(trajRoll)*cos(trajHeading) - sin(trajHeading)*cos(trajRoll))*(-lidarDist*sin(borePitch)*sin(scanAngleFB)*sin(boreYaw) + lidarDist*sin(boreRoll)*sin(scanAngleRL)*sin(boreYaw)*cos(borePitch)*cos(scanAngleFB) + lidarDist*sin(boreYaw)*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL)) + (sin(trajPitch)*cos(trajRoll)*cos(trajHeading) + sin(trajRoll)*sin(trajHeading))*(-lidarDist*sin(borePitch)*sin(boreRoll)*sin(scanAngleRL)*cos(scanAngleFB) - lidarDist*sin(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL) - lidarDist*sin(scanAngleFB)*cos(borePitch)) + (-lidarDist*sin(borePitch)*sin(scanAngleFB)*cos(boreYaw) + lidarDist*sin(boreRoll)*sin(scanAngleRL)*cos(borePitch)*cos(scanAngleFB)*cos(boreYaw) + lidarDist*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL)*cos(boreYaw))*cos(trajPitch)*cos(trajHeading);
-        a(1, 11) = (sin(trajPitch)*sin(trajRoll)*cos(trajHeading) - sin(trajHeading)*cos(trajRoll))*(lidarDist*(sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*sin(scanAngleRL)*cos(scanAngleFB) + lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleFB)*cos(borePitch)*cos(boreYaw)) + (lidarDist*(-sin(borePitch)*sin(boreRoll)*sin(boreYaw) - cos(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB) + lidarDist*(-sin(borePitch)*sin(boreYaw)*cos(boreRoll) + sin(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) - lidarDist*sin(scanAngleFB)*sin(boreYaw)*cos(borePitch))*cos(trajPitch)*cos(trajHeading);
-        a(1, 12) = cos(trajPitch)*cos(trajHeading);
-        a(1, 13) = sin(trajPitch)*sin(trajRoll)*cos(trajHeading) - sin(trajHeading)*cos(trajRoll);
-        a(1, 14) = sin(trajPitch)*cos(trajRoll)*cos(trajHeading) + sin(trajRoll)*sin(trajHeading);
-        // partials with respect to lidar point z
-        a(2, 0) = (sin(borePitch)*sin(scanAngleFB) - sin(boreRoll)*sin(scanAngleRL)*cos(borePitch)*cos(scanAngleFB) - cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL))*cos(trajPitch)*cos(trajRoll) + (-(sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB) - (sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) - sin(scanAngleFB)*sin(boreYaw)*cos(borePitch))*sin(trajRoll)*cos(trajPitch) + ((sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*sin(scanAngleRL)*cos(scanAngleFB) + (sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + sin(scanAngleFB)*cos(borePitch)*cos(boreYaw))*sin(trajPitch);
-        a(2, 1) = (-lidarDist*(sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB))*sin(trajRoll)*cos(trajPitch) + (lidarDist*(sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*cos(scanAngleFB)*cos(scanAngleRL) - lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB))*sin(trajPitch) + (-lidarDist*sin(boreRoll)*cos(borePitch)*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleRL)*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB))*cos(trajPitch)*cos(trajRoll);
-        a(2, 2) = (lidarDist*sin(borePitch)*cos(scanAngleFB) + lidarDist*sin(boreRoll)*sin(scanAngleFB)*sin(scanAngleRL)*cos(borePitch) + lidarDist*sin(scanAngleFB)*cos(borePitch)*cos(boreRoll)*cos(scanAngleRL))*cos(trajPitch)*cos(trajRoll) + (lidarDist*(sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*sin(scanAngleFB)*sin(scanAngleRL) + lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*sin(scanAngleFB)*cos(scanAngleRL) - lidarDist*sin(boreYaw)*cos(borePitch)*cos(scanAngleFB))*sin(trajRoll)*cos(trajPitch) + (-lidarDist*(sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*sin(scanAngleFB)*sin(scanAngleRL) - lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*sin(scanAngleFB)*cos(scanAngleRL) + lidarDist*cos(borePitch)*cos(scanAngleFB)*cos(boreYaw))*sin(trajPitch);
-        a(2, 3) = 0;
-        a(2, 4) = 0;
-        a(2, 5) = 1;
-        a(2, 6) = -(lidarDist*sin(borePitch)*sin(scanAngleFB) - lidarDist*sin(boreRoll)*sin(scanAngleRL)*cos(borePitch)*cos(scanAngleFB) - lidarDist*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL) - leverZ)*sin(trajRoll)*cos(trajPitch) + (-lidarDist*(sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB) - lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) - lidarDist*sin(scanAngleFB)*sin(boreYaw)*cos(borePitch) - leverY)*cos(trajPitch)*cos(trajRoll);
-        a(2, 7) = -(lidarDist*sin(borePitch)*sin(scanAngleFB) - lidarDist*sin(boreRoll)*sin(scanAngleRL)*cos(borePitch)*cos(scanAngleFB) - lidarDist*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL) - leverZ)*sin(trajPitch)*cos(trajRoll) - (-lidarDist*(sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB) - lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) - lidarDist*sin(scanAngleFB)*sin(boreYaw)*cos(borePitch) - leverY)*sin(trajPitch)*sin(trajRoll) + (lidarDist*(sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*sin(scanAngleRL)*cos(scanAngleFB) + lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleFB)*cos(borePitch)*cos(boreYaw) + leverX)*cos(trajPitch);
-        a(2, 8) = 0;
-        a(2, 9) = (-lidarDist*(-sin(borePitch)*sin(boreRoll)*sin(boreYaw) - cos(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) - lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB))*sin(trajRoll)*cos(trajPitch) + (lidarDist*(-sin(borePitch)*sin(boreRoll)*cos(boreYaw) + sin(boreYaw)*cos(boreRoll))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB))*sin(trajPitch) + (lidarDist*sin(boreRoll)*cos(borePitch)*cos(scanAngleFB)*cos(scanAngleRL) - lidarDist*sin(scanAngleRL)*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB))*cos(trajPitch)*cos(trajRoll);
-        a(2, 10) = (lidarDist*sin(borePitch)*sin(scanAngleFB)*sin(boreYaw) - lidarDist*sin(boreRoll)*sin(scanAngleRL)*sin(boreYaw)*cos(borePitch)*cos(scanAngleFB) - lidarDist*sin(boreYaw)*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL))*sin(trajRoll)*cos(trajPitch) + (-lidarDist*sin(borePitch)*sin(scanAngleFB)*cos(boreYaw) + lidarDist*sin(boreRoll)*sin(scanAngleRL)*cos(borePitch)*cos(scanAngleFB)*cos(boreYaw) + lidarDist*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL)*cos(boreYaw))*sin(trajPitch) + (lidarDist*sin(borePitch)*sin(boreRoll)*sin(scanAngleRL)*cos(scanAngleFB) + lidarDist*sin(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleFB)*cos(borePitch))*cos(trajPitch)*cos(trajRoll);
-        a(2, 11) = (lidarDist*(-sin(borePitch)*sin(boreRoll)*sin(boreYaw) - cos(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB) + lidarDist*(-sin(borePitch)*sin(boreYaw)*cos(boreRoll) + sin(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) - lidarDist*sin(scanAngleFB)*sin(boreYaw)*cos(borePitch))*sin(trajPitch) + (-lidarDist*(sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*sin(scanAngleRL)*cos(scanAngleFB) - lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) - lidarDist*sin(scanAngleFB)*cos(borePitch)*cos(boreYaw))*sin(trajRoll)*cos(trajPitch);
-        a(2, 12) = sin(trajPitch);
-        a(2, 13) = -sin(trajRoll)*cos(trajPitch);
-        a(2, 14) = -cos(trajPitch)*cos(trajRoll);
-        */
-
-
-        
         // precompute
         double sinTrajRoll = sin(trajRoll);
         double cosTrajRoll = cos(trajRoll);
@@ -454,99 +434,6 @@ namespace pdal
         a(2, 12) = sinTrajPitch;
         a(2, 13) = -sinTrajRoll*cosTrajPitch;
         a(2, 14) = -cosTrajPitch*cosTrajRoll;
-        
-
-
-        /*
-        double trajYaw = -trajHeading;  // heading to yaw
-        // Jacobian matrix ordered the same as the observation covariance matrix
-        MatrixXd a = MatrixXd::Zero(3, 15);
-        // partials with respect to lidar point X
-        a(0, 0) = (sin(trajPitch)*sin(trajRoll)*sin(trajYaw) + cos(trajRoll)*cos(trajYaw))*((sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB) + (-sin(borePitch)*sin(boreYaw)*cos(boreRoll) + sin(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + sin(scanAngleFB)*sin(boreYaw)*cos(borePitch)) + (sin(trajPitch)*sin(trajYaw)*cos(trajRoll) - sin(trajRoll)*cos(trajYaw))*(-sin(borePitch)*sin(scanAngleFB) + sin(boreRoll)*sin(scanAngleRL)*cos(borePitch)*cos(scanAngleFB) - cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL)) + ((sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*sin(scanAngleRL)*cos(scanAngleFB) + (-sin(borePitch)*cos(boreRoll)*cos(boreYaw) - sin(boreRoll)*sin(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + sin(scanAngleFB)*cos(borePitch)*cos(boreYaw))*sin(trajYaw)*cos(trajPitch);
-        a(0, 1) = (sin(trajPitch)*sin(trajRoll)*sin(trajYaw) + cos(trajRoll)*cos(trajYaw))*(lidarDist*(sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB)) + (sin(trajPitch)*sin(trajYaw)*cos(trajRoll) - sin(trajRoll)*cos(trajYaw))*(lidarDist*sin(boreRoll)*cos(borePitch)*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleRL)*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)) + (lidarDist*(sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB))*sin(trajYaw)*cos(trajPitch);
-        a(0, 2) = (sin(trajPitch)*sin(trajRoll)*sin(trajYaw) + cos(trajRoll)*cos(trajYaw))*(-lidarDist*(sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*sin(scanAngleFB)*sin(scanAngleRL) + lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*sin(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(boreYaw)*cos(borePitch)*cos(scanAngleFB)) + (sin(trajPitch)*sin(trajYaw)*cos(trajRoll) - sin(trajRoll)*cos(trajYaw))*(-lidarDist*sin(borePitch)*cos(scanAngleFB) - lidarDist*sin(boreRoll)*sin(scanAngleFB)*sin(scanAngleRL)*cos(borePitch) + lidarDist*sin(scanAngleFB)*cos(borePitch)*cos(boreRoll)*cos(scanAngleRL)) + (-lidarDist*(sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*sin(scanAngleFB)*sin(scanAngleRL) + lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*sin(scanAngleFB)*cos(scanAngleRL) + lidarDist*cos(borePitch)*cos(scanAngleFB)*cos(boreYaw))*sin(trajYaw)*cos(trajPitch);
-        a(0, 3) = 1;
-        a(0, 4) = 0;
-        a(0, 5) = 0;
-        a(0, 6) = (-sin(trajPitch)*sin(trajRoll)*sin(trajYaw) - cos(trajRoll)*cos(trajYaw))*(-lidarDist*sin(borePitch)*sin(scanAngleFB) + lidarDist*sin(boreRoll)*sin(scanAngleRL)*cos(borePitch)*cos(scanAngleFB) - lidarDist*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL) + leverZ) + (sin(trajPitch)*sin(trajYaw)*cos(trajRoll) - sin(trajRoll)*cos(trajYaw))*(lidarDist*(sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB) - lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleFB)*sin(boreYaw)*cos(borePitch) + leverX);
-        a(0, 7) = (-lidarDist*sin(borePitch)*sin(scanAngleFB) + lidarDist*sin(boreRoll)*sin(scanAngleRL)*cos(borePitch)*cos(scanAngleFB) - lidarDist*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL) + leverZ)*sin(trajYaw)*cos(trajPitch)*cos(trajRoll) + (lidarDist*(sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB) - lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleFB)*sin(boreYaw)*cos(borePitch) + leverX)*sin(trajRoll)*sin(trajYaw)*cos(trajPitch) - (lidarDist*(sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*sin(scanAngleRL)*cos(scanAngleFB) - lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleFB)*cos(borePitch)*cos(boreYaw) + leverY)*sin(trajPitch)*sin(trajYaw);
-        a(0, 8) = (sin(trajPitch)*sin(trajRoll)*cos(trajYaw) - sin(trajYaw)*cos(trajRoll))*(lidarDist*(sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB) - lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleFB)*sin(boreYaw)*cos(borePitch) + leverX) + (sin(trajPitch)*cos(trajRoll)*cos(trajYaw) + sin(trajRoll)*sin(trajYaw))*(-lidarDist*sin(borePitch)*sin(scanAngleFB) + lidarDist*sin(boreRoll)*sin(scanAngleRL)*cos(borePitch)*cos(scanAngleFB) - lidarDist*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL) + leverZ) + (lidarDist*(sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*sin(scanAngleRL)*cos(scanAngleFB) - lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleFB)*cos(borePitch)*cos(boreYaw) + leverY)*cos(trajPitch)*cos(trajYaw);
-        a(0, 9) = (sin(trajPitch)*sin(trajRoll)*sin(trajYaw) + cos(trajRoll)*cos(trajYaw))*(-lidarDist*(-sin(borePitch)*sin(boreRoll)*sin(boreYaw) - cos(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB)) + (sin(trajPitch)*sin(trajYaw)*cos(trajRoll) - sin(trajRoll)*cos(trajYaw))*(lidarDist*sin(boreRoll)*cos(borePitch)*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleRL)*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)) + (-lidarDist*(-sin(borePitch)*sin(boreRoll)*cos(boreYaw) + sin(boreYaw)*cos(boreRoll))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB))*sin(trajYaw)*cos(trajPitch);
-        a(0, 10) = (sin(trajPitch)*sin(trajRoll)*sin(trajYaw) + cos(trajRoll)*cos(trajYaw))*(-lidarDist*sin(borePitch)*sin(scanAngleFB)*sin(boreYaw) + lidarDist*sin(boreRoll)*sin(scanAngleRL)*sin(boreYaw)*cos(borePitch)*cos(scanAngleFB) - lidarDist*sin(boreYaw)*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL)) + (sin(trajPitch)*sin(trajYaw)*cos(trajRoll) - sin(trajRoll)*cos(trajYaw))*(-lidarDist*sin(borePitch)*sin(boreRoll)*sin(scanAngleRL)*cos(scanAngleFB) + lidarDist*sin(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL) - lidarDist*sin(scanAngleFB)*cos(borePitch)) + (-lidarDist*sin(borePitch)*sin(scanAngleFB)*cos(boreYaw) + lidarDist*sin(boreRoll)*sin(scanAngleRL)*cos(borePitch)*cos(scanAngleFB)*cos(boreYaw) - lidarDist*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL)*cos(boreYaw))*sin(trajYaw)*cos(trajPitch);
-        a(0, 11) = (sin(trajPitch)*sin(trajRoll)*sin(trajYaw) + cos(trajRoll)*cos(trajYaw))*(lidarDist*(sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*sin(scanAngleRL)*cos(scanAngleFB) - lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleFB)*cos(borePitch)*cos(boreYaw)) + (lidarDist*(-sin(borePitch)*sin(boreRoll)*sin(boreYaw) - cos(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB) - lidarDist*(-sin(borePitch)*sin(boreYaw)*cos(boreRoll) + sin(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) - lidarDist*sin(scanAngleFB)*sin(boreYaw)*cos(borePitch))*sin(trajYaw)*cos(trajPitch);
-        a(0, 12) = sin(trajPitch)*sin(trajRoll)*sin(trajYaw) + cos(trajRoll)*cos(trajYaw);
-        a(0, 13) = (trajYaw)*cos(trajPitch);
-        a(0, 14) = sin(trajPitch)*sin(trajYaw)*cos(trajRoll) - sin(trajRoll)*cos(trajYaw);
-        // partials with respect to lidar point Y
-        a(1, 0) = (sin(trajPitch)*sin(trajRoll)*cos(trajYaw) - sin(trajYaw)*cos(trajRoll))*((sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB) + (-sin(borePitch)*sin(boreYaw)*cos(boreRoll) + sin(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + sin(scanAngleFB)*sin(boreYaw)*cos(borePitch)) + (sin(trajPitch)*cos(trajRoll)*cos(trajYaw) + sin(trajRoll)*sin(trajYaw))*(-sin(borePitch)*sin(scanAngleFB) + sin(boreRoll)*sin(scanAngleRL)*cos(borePitch)*cos(scanAngleFB) - cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL)) + ((sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*sin(scanAngleRL)*cos(scanAngleFB) + (-sin(borePitch)*cos(boreRoll)*cos(boreYaw) - sin(boreRoll)*sin(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + sin(scanAngleFB)*cos(borePitch)*cos(boreYaw))*cos(trajPitch)*cos(trajYaw);
-        a(1, 1) = (sin(trajPitch)*sin(trajRoll)*cos(trajYaw) - sin(trajYaw)*cos(trajRoll))*(lidarDist*(sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB)) + (sin(trajPitch)*cos(trajRoll)*cos(trajYaw) + sin(trajRoll)*sin(trajYaw))*(lidarDist*sin(boreRoll)*cos(borePitch)*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleRL)*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)) + (lidarDist*(sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB))*cos(trajPitch)*cos(trajYaw);
-        a(1, 2) = (sin(trajPitch)*sin(trajRoll)*cos(trajYaw) - sin(trajYaw)*cos(trajRoll))*(-lidarDist*(sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*sin(scanAngleFB)*sin(scanAngleRL) + lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*sin(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(boreYaw)*cos(borePitch)*cos(scanAngleFB)) + (sin(trajPitch)*cos(trajRoll)*cos(trajYaw) + sin(trajRoll)*sin(trajYaw))*(-lidarDist*sin(borePitch)*cos(scanAngleFB) - lidarDist*sin(boreRoll)*sin(scanAngleFB)*sin(scanAngleRL)*cos(borePitch) + lidarDist*sin(scanAngleFB)*cos(borePitch)*cos(boreRoll)*cos(scanAngleRL)) + (-lidarDist*(sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*sin(scanAngleFB)*sin(scanAngleRL) + lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*sin(scanAngleFB)*cos(scanAngleRL) + lidarDist*cos(borePitch)*cos(scanAngleFB)*cos(boreYaw))*cos(trajPitch)*cos(trajYaw);
-        a(1, 3) = 0;
-        a(1, 4) = 1;
-        a(1, 5) = 0;
-        a(1, 6) = (-sin(trajPitch)*sin(trajRoll)*cos(trajYaw) + sin(trajYaw)*cos(trajRoll))*(-lidarDist*sin(borePitch)*sin(scanAngleFB) + lidarDist*sin(boreRoll)*sin(scanAngleRL)*cos(borePitch)*cos(scanAngleFB) - lidarDist*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL) + leverZ) + (sin(trajPitch)*cos(trajRoll)*cos(trajYaw) + sin(trajRoll)*sin(trajYaw))*(lidarDist*(sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB) - lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleFB)*sin(boreYaw)*cos(borePitch) + leverX);
-        a(1, 7) = (-lidarDist*sin(borePitch)*sin(scanAngleFB) + lidarDist*sin(boreRoll)*sin(scanAngleRL)*cos(borePitch)*cos(scanAngleFB) - lidarDist*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL) + leverZ)*cos(trajPitch)*cos(trajRoll)*cos(trajYaw) + (lidarDist*(sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB) - lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleFB)*sin(boreYaw)*cos(borePitch) + leverX)*sin(trajRoll)*cos(trajPitch)*cos(trajYaw) - (lidarDist*(sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*sin(scanAngleRL)*cos(scanAngleFB) - lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleFB)*cos(borePitch)*cos(boreYaw) + leverY)*sin(trajPitch)*cos(trajYaw);
-        a(1, 8) = (-sin(trajPitch)*sin(trajRoll)*sin(trajYaw) - cos(trajRoll)*cos(trajYaw))*(lidarDist*(sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB) - lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleFB)*sin(boreYaw)*cos(borePitch) + leverX) + (-sin(trajPitch)*sin(trajYaw)*cos(trajRoll) + sin(trajRoll)*cos(trajYaw))*(-lidarDist*sin(borePitch)*sin(scanAngleFB) + lidarDist*sin(boreRoll)*sin(scanAngleRL)*cos(borePitch)*cos(scanAngleFB) - lidarDist*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL) + leverZ) - (lidarDist*(sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*sin(scanAngleRL)*cos(scanAngleFB) - lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleFB)*cos(borePitch)*cos(boreYaw) + leverY)*sin(trajYaw)*cos(trajPitch);
-        a(1, 9) = (sin(trajPitch)*sin(trajRoll)*cos(trajYaw) - sin(trajYaw)*cos(trajRoll))*(-lidarDist*(-sin(borePitch)*sin(boreRoll)*sin(boreYaw) - cos(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB)) + (sin(trajPitch)*cos(trajRoll)*cos(trajYaw) + sin(trajRoll)*sin(trajYaw))*(lidarDist*sin(boreRoll)*cos(borePitch)*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleRL)*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)) + (-lidarDist*(-sin(borePitch)*sin(boreRoll)*cos(boreYaw) + sin(boreYaw)*cos(boreRoll))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB))*cos(trajPitch)*cos(trajYaw);
-        a(1, 10) = (sin(trajPitch)*sin(trajRoll)*cos(trajYaw) - sin(trajYaw)*cos(trajRoll))*(-lidarDist*sin(borePitch)*sin(scanAngleFB)*sin(boreYaw) + lidarDist*sin(boreRoll)*sin(scanAngleRL)*sin(boreYaw)*cos(borePitch)*cos(scanAngleFB) - lidarDist*sin(boreYaw)*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL)) + (sin(trajPitch)*cos(trajRoll)*cos(trajYaw) + sin(trajRoll)*sin(trajYaw))*(-lidarDist*sin(borePitch)*sin(boreRoll)*sin(scanAngleRL)*cos(scanAngleFB) + lidarDist*sin(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL) - lidarDist*sin(scanAngleFB)*cos(borePitch)) + (-lidarDist*sin(borePitch)*sin(scanAngleFB)*cos(boreYaw) + lidarDist*sin(boreRoll)*sin(scanAngleRL)*cos(borePitch)*cos(scanAngleFB)*cos(boreYaw) - lidarDist*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL)*cos(boreYaw))*cos(trajPitch)*cos(trajYaw);
-        a(1, 11) = (sin(trajPitch)*sin(trajRoll)*cos(trajYaw) - sin(trajYaw)*cos(trajRoll))*(lidarDist*(sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*sin(scanAngleRL)*cos(scanAngleFB) - lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleFB)*cos(borePitch)*cos(boreYaw)) + (lidarDist*(-sin(borePitch)*sin(boreRoll)*sin(boreYaw) - cos(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB) - lidarDist*(-sin(borePitch)*sin(boreYaw)*cos(boreRoll) + sin(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) - lidarDist*sin(scanAngleFB)*sin(boreYaw)*cos(borePitch))*cos(trajPitch)*cos(trajYaw);
-        a(1, 12) = sin(trajPitch)*sin(trajRoll)*cos(trajYaw) - sin(trajYaw)*cos(trajRoll);
-        a(1, 13) = cos(trajPitch)*cos(trajYaw);
-        a(1, 14) = sin(trajPitch)*cos(trajRoll)*cos(trajYaw) + sin(trajRoll)*sin(trajYaw);
-        // partials with respect to lidar point Z
-        a(2, 0) = (-sin(borePitch)*sin(scanAngleFB) + sin(boreRoll)*sin(scanAngleRL)*cos(borePitch)*cos(scanAngleFB) - cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL))*cos(trajPitch)*cos(trajRoll) + ((sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB) + (-sin(borePitch)*sin(boreYaw)*cos(boreRoll) + sin(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + sin(scanAngleFB)*sin(boreYaw)*cos(borePitch))*sin(trajRoll)*cos(trajPitch) + (-(sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*sin(scanAngleRL)*cos(scanAngleFB) - (-sin(borePitch)*cos(boreRoll)*cos(boreYaw) - sin(boreRoll)*sin(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) - sin(scanAngleFB)*cos(borePitch)*cos(boreYaw))*sin(trajPitch);
-        a(2, 1) = (lidarDist*(sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB))*sin(trajRoll)*cos(trajPitch) + (-lidarDist*(sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*cos(scanAngleFB)*cos(scanAngleRL) - lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB))*sin(trajPitch) + (lidarDist*sin(boreRoll)*cos(borePitch)*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleRL)*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB))*cos(trajPitch)*cos(trajRoll);
-        a(2, 2) = (-lidarDist*sin(borePitch)*cos(scanAngleFB) - lidarDist*sin(boreRoll)*sin(scanAngleFB)*sin(scanAngleRL)*cos(borePitch) + lidarDist*sin(scanAngleFB)*cos(borePitch)*cos(boreRoll)*cos(scanAngleRL))*cos(trajPitch)*cos(trajRoll) + (-lidarDist*(sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*sin(scanAngleFB)*sin(scanAngleRL) + lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*sin(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(boreYaw)*cos(borePitch)*cos(scanAngleFB))*sin(trajRoll)*cos(trajPitch) + (lidarDist*(sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*sin(scanAngleFB)*sin(scanAngleRL) - lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*sin(scanAngleFB)*cos(scanAngleRL) - lidarDist*cos(borePitch)*cos(scanAngleFB)*cos(boreYaw))*sin(trajPitch);
-        a(2, 3) = 0;
-        a(2, 4) = 0;
-        a(2, 5) = 1;
-        a(2, 6) = -(-lidarDist*sin(borePitch)*sin(scanAngleFB) + lidarDist*sin(boreRoll)*sin(scanAngleRL)*cos(borePitch)*cos(scanAngleFB) - lidarDist*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL) + leverZ)*sin(trajRoll)*cos(trajPitch) + (lidarDist*(sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB) - lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleFB)*sin(boreYaw)*cos(borePitch) + leverX)*cos(trajPitch)*cos(trajRoll);
-        a(2, 7) = -(-lidarDist*sin(borePitch)*sin(scanAngleFB) + lidarDist*sin(boreRoll)*sin(scanAngleRL)*cos(borePitch)*cos(scanAngleFB) - lidarDist*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL) + leverZ)*sin(trajPitch)*cos(trajRoll) - (lidarDist*(sin(borePitch)*sin(boreRoll)*sin(boreYaw) + cos(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB) - lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleFB)*sin(boreYaw)*cos(borePitch) + leverX)*sin(trajPitch)*sin(trajRoll) + (-lidarDist*(sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*sin(scanAngleRL)*cos(scanAngleFB) + lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) - lidarDist*sin(scanAngleFB)*cos(borePitch)*cos(boreYaw) - leverY)*cos(trajPitch);
-        a(2, 8) = 0;
-        a(2, 9) = (-lidarDist*(-sin(borePitch)*sin(boreRoll)*sin(boreYaw) - cos(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*(sin(borePitch)*sin(boreYaw)*cos(boreRoll) - sin(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB))*sin(trajRoll)*cos(trajPitch) + (lidarDist*(-sin(borePitch)*sin(boreRoll)*cos(boreYaw) + sin(boreYaw)*cos(boreRoll))*cos(scanAngleFB)*cos(scanAngleRL) - lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB))*sin(trajPitch) + (lidarDist*sin(boreRoll)*cos(borePitch)*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleRL)*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB))*cos(trajPitch)*cos(trajRoll);
-        a(2, 10) = (-lidarDist*sin(borePitch)*sin(scanAngleFB)*sin(boreYaw) + lidarDist*sin(boreRoll)*sin(scanAngleRL)*sin(boreYaw)*cos(borePitch)*cos(scanAngleFB) - lidarDist*sin(boreYaw)*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL))*sin(trajRoll)*cos(trajPitch) + (lidarDist*sin(borePitch)*sin(scanAngleFB)*cos(boreYaw) - lidarDist*sin(boreRoll)*sin(scanAngleRL)*cos(borePitch)*cos(scanAngleFB)*cos(boreYaw) + lidarDist*cos(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL)*cos(boreYaw))*sin(trajPitch) + (-lidarDist*sin(borePitch)*sin(boreRoll)*sin(scanAngleRL)*cos(scanAngleFB) + lidarDist*sin(borePitch)*cos(boreRoll)*cos(scanAngleFB)*cos(scanAngleRL) - lidarDist*sin(scanAngleFB)*cos(borePitch))*cos(trajPitch)*cos(trajRoll);
-        a(2, 11) = (-lidarDist*(-sin(borePitch)*sin(boreRoll)*sin(boreYaw) - cos(boreRoll)*cos(boreYaw))*sin(scanAngleRL)*cos(scanAngleFB) + lidarDist*(-sin(borePitch)*sin(boreYaw)*cos(boreRoll) + sin(boreRoll)*cos(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleFB)*sin(boreYaw)*cos(borePitch))*sin(trajPitch) + (lidarDist*(sin(borePitch)*sin(boreRoll)*cos(boreYaw) - sin(boreYaw)*cos(boreRoll))*sin(scanAngleRL)*cos(scanAngleFB) - lidarDist*(sin(borePitch)*cos(boreRoll)*cos(boreYaw) + sin(boreRoll)*sin(boreYaw))*cos(scanAngleFB)*cos(scanAngleRL) + lidarDist*sin(scanAngleFB)*cos(borePitch)*cos(boreYaw))*sin(trajRoll)*cos(trajPitch);
-        a(2, 12) = sin(trajRoll)*cos(trajPitch);
-        a(2, 13) = -sin(trajPitch);
-        a(2, 14) = cos(trajPitch)*cos(trajRoll);
-        */
-
-
-        /*
-        double trajYaw = -trajHeading;  // heading to yaw
-        // Jacobian matrix ordered the same as the observation covariance matrix
-        MatrixXd a = MatrixXd::Zero(3, 9);
-        // partials with respect to lidar point X
-        a(0, 0) = (sin(trajPitch)*sin(trajRoll)*sin(trajYaw) + cos(trajRoll)*cos(trajYaw))*sin(scanAngleLR)*cos(scanAngleFB) + (-sin(trajPitch)*sin(trajYaw)*cos(trajRoll) + sin(trajRoll)*cos(trajYaw))*cos(scanAngleFB)*cos(scanAngleLR) + sin(scanAngleFB)*sin(trajYaw)*cos(trajPitch);
-        a(0, 1) = lidarDist*(sin(trajPitch)*sin(trajRoll)*sin(trajYaw) + cos(trajRoll)*cos(trajYaw))*cos(scanAngleFB)*cos(scanAngleLR) + lidarDist*(sin(trajPitch)*sin(trajYaw)*cos(trajRoll) - sin(trajRoll)*cos(trajYaw))*sin(scanAngleLR)*cos(scanAngleFB);
-        a(0, 2) = -lidarDist*(sin(trajPitch)*sin(trajRoll)*sin(trajYaw) + cos(trajRoll)*cos(trajYaw))*sin(scanAngleFB)*sin(scanAngleLR) + lidarDist*(sin(trajPitch)*sin(trajYaw)*cos(trajRoll) - sin(trajRoll)*cos(trajYaw))*sin(scanAngleFB)*cos(scanAngleLR) + lidarDist*sin(trajYaw)*cos(trajPitch)*cos(scanAngleFB);
-        a(0, 3) = 1;
-        a(0, 4) = 0;
-        a(0, 5) = 0;
-        a(0, 6) = -lidarDist*(-sin(trajPitch)*sin(trajRoll)*sin(trajYaw) - cos(trajRoll)*cos(trajYaw))*cos(scanAngleFB)*cos(scanAngleLR) + lidarDist*(sin(trajPitch)*sin(trajYaw)*cos(trajRoll) - sin(trajRoll)*cos(trajYaw))*sin(scanAngleLR)*cos(scanAngleFB);
-        a(0, 7) = -lidarDist*sin(trajPitch)*sin(scanAngleFB)*sin(trajYaw) + lidarDist*sin(trajRoll)*sin(scanAngleLR)*sin(trajYaw)*cos(trajPitch)*cos(scanAngleFB) - lidarDist*sin(trajYaw)*cos(trajPitch)*cos(trajRoll)*cos(scanAngleFB)*cos(scanAngleLR);
-        a(0, 8) = lidarDist*(sin(trajPitch)*sin(trajRoll)*cos(trajYaw) - sin(trajYaw)*cos(trajRoll))*sin(scanAngleLR)*cos(scanAngleFB) - lidarDist*(sin(trajPitch)*cos(trajRoll)*cos(trajYaw) + sin(trajRoll)*sin(trajYaw))*cos(scanAngleFB)*cos(scanAngleLR) + lidarDist*sin(scanAngleFB)*cos(trajPitch)*cos(trajYaw);
-        // partials with respect to lidar point Y
-        a(1, 0) = (sin(trajPitch)*sin(trajRoll)*cos(trajYaw) - sin(trajYaw)*cos(trajRoll))*sin(scanAngleLR)*cos(scanAngleFB) + (-sin(trajPitch)*cos(trajRoll)*cos(trajYaw) - sin(trajRoll)*sin(trajYaw))*cos(scanAngleFB)*cos(scanAngleLR) + sin(scanAngleFB)*cos(trajPitch)*cos(trajYaw);
-        a(1, 1) = lidarDist*(sin(trajPitch)*sin(trajRoll)*cos(trajYaw) - sin(trajYaw)*cos(trajRoll))*cos(scanAngleFB)*cos(scanAngleLR) + lidarDist*(sin(trajPitch)*cos(trajRoll)*cos(trajYaw) + sin(trajRoll)*sin(trajYaw))*sin(scanAngleLR)*cos(scanAngleFB);
-        a(1, 2) = -lidarDist*(sin(trajPitch)*sin(trajRoll)*cos(trajYaw) - sin(trajYaw)*cos(trajRoll))*sin(scanAngleFB)*sin(scanAngleLR) + lidarDist*(sin(trajPitch)*cos(trajRoll)*cos(trajYaw) + sin(trajRoll)*sin(trajYaw))*sin(scanAngleFB)*cos(scanAngleLR) + lidarDist*cos(trajPitch)*cos(scanAngleFB)*cos(trajYaw);
-        a(1, 3) = 0;
-        a(1, 4) = 1;
-        a(1, 5) = 0;
-        a(1, 6) = -lidarDist*(-sin(trajPitch)*sin(trajRoll)*cos(trajYaw) + sin(trajYaw)*cos(trajRoll))*cos(scanAngleFB)*cos(scanAngleLR) + lidarDist*(sin(trajPitch)*cos(trajRoll)*cos(trajYaw) + sin(trajRoll)*sin(trajYaw))*sin(scanAngleLR)*cos(scanAngleFB);
-        a(1, 7) = -lidarDist*sin(trajPitch)*sin(scanAngleFB)*cos(trajYaw) + lidarDist*sin(trajRoll)*sin(scanAngleLR)*cos(trajPitch)*cos(scanAngleFB)*cos(trajYaw) - lidarDist*cos(trajPitch)*cos(trajRoll)*cos(scanAngleFB)*cos(scanAngleLR)*cos(trajYaw);
-        a(1, 8) = lidarDist*(-sin(trajPitch)*sin(trajRoll)*sin(trajYaw) - cos(trajRoll)*cos(trajYaw))*sin(scanAngleLR)*cos(scanAngleFB) - lidarDist*(-sin(trajPitch)*sin(trajYaw)*cos(trajRoll) + sin(trajRoll)*cos(trajYaw))*cos(scanAngleFB)*cos(scanAngleLR) - lidarDist*sin(scanAngleFB)*sin(trajYaw)*cos(trajPitch);
-        // partials with respect to lidar point Z
-        a(2, 0) = -sin(trajPitch)*sin(scanAngleFB) + sin(trajRoll)*sin(scanAngleLR)*cos(trajPitch)*cos(scanAngleFB) - cos(trajPitch)*cos(trajRoll)*cos(scanAngleFB)*cos(scanAngleLR);
-        a(2, 1) = lidarDist*sin(trajRoll)*cos(trajPitch)*cos(scanAngleFB)*cos(scanAngleLR) + lidarDist*sin(scanAngleLR)*cos(trajPitch)*cos(trajRoll)*cos(scanAngleFB);
-        a(2, 2) = -lidarDist*sin(trajPitch)*cos(scanAngleFB) - lidarDist*sin(trajRoll)*sin(scanAngleFB)*sin(scanAngleLR)*cos(trajPitch) + lidarDist*sin(scanAngleFB)*cos(trajPitch)*cos(trajRoll)*cos(scanAngleLR);
-        a(2, 3) = 0;
-        a(2, 4) = 0;
-        a(2, 5) = 1;
-        a(2, 6) = lidarDist*sin(trajRoll)*cos(trajPitch)*cos(scanAngleFB)*cos(scanAngleLR) + lidarDist*sin(scanAngleLR)*cos(trajPitch)*cos(trajRoll)*cos(scanAngleFB);
-        a(2, 7) = -lidarDist*sin(trajPitch)*sin(trajRoll)*sin(scanAngleLR)*cos(scanAngleFB) + lidarDist*sin(trajPitch)*cos(trajRoll)*cos(scanAngleFB)*cos(scanAngleLR) - lidarDist*sin(scanAngleFB)*cos(trajPitch);
-        a(2, 8) = 0;
-        */
 
         // propagate
         Matrix3d c = a * obsCovariance * a.transpose();
@@ -734,24 +621,6 @@ namespace pdal
         * (M_PI / 180.0);
 
         return true;
-    }
-
-
-    void ALS_TPU::savePoints(std::string filename, PointViewPtr view)
-    {
-        pdal::Options ops;
-        ops.add("filename", filename);
-        ops.add("minor_version", 4);
-        ops.add("extra_dims", "all");
-
-        BufferReader bufferReader;
-        bufferReader.addView(view);
-
-        pdal::LasWriter writer;
-        writer.setOptions(ops);
-        writer.setInput(bufferReader);
-        writer.prepare(view->table());
-        writer.execute(view->table());
     }
 
 } // namespace pdal

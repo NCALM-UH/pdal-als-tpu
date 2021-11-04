@@ -46,12 +46,13 @@ namespace pdal {
             std::string getName() const;
 
         private:
-            Arg *m_profileArg, *m_yamlFileArg;
-            std::string m_profile, m_yamlFile;
+            Arg *m_profileDefArg, *m_profileFileArg;
+            std::string m_profileDef, m_profileFile;
 
             double m_maximumIncidenceAngle;
-            bool m_includeIncidenceAngle;
             double m_noDataValue;
+            bool m_includeIncidenceAngle;
+            bool m_extendedOutput;
 
             double m_stdLidarRange = 0.0, m_stdScanAngle = 0.0;
             double m_stdSensorXy = 0.0, m_stdSensorZ = 0.0;
@@ -97,9 +98,6 @@ namespace pdal {
 
             PointViewPtr m_cloud;
             bool m_complete;
-
-            // Temp function for debugging
-            void savePoints(std::string filename, PointViewPtr view);
 
             ALS_TPU& operator=(const ALS_TPU&);     // not implemented
             ALS_TPU(const ALS_TPU&);                // not implemented
