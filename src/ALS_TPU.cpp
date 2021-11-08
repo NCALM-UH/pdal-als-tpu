@@ -77,7 +77,7 @@ namespace pdal
         if (m_profileArg->set() && m_yamlFileArg->set())
             throwError("Can not specify both the 'profile'and 'yaml' options.");
 
-        // populate the observation uncertainties
+        // populate the sensor observation uncertainties
         if (m_yamlFileArg->set())
         {
             YAML::Node profile = YAML::LoadFile(m_yamlFile);

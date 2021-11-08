@@ -1,6 +1,6 @@
 # ALS TPU from Point Clouds
 
-![](img/flightline111-StdZ-large.png)
+![](../img/flightline111-StdZ-large.png)
 
 ## Motivation
 
@@ -15,7 +15,7 @@ Generating total propagated uncertainty (TPU), also referred to as "propagated e
 
 Note that each measurement also needs a corresponding estimated uncertainty. The ALS sensor model refers to items such as the inertial motion unit (IMU), scanner, and local level reference frame definitions, and rotation types and orders for the boresight and IMU angles. Together, the measurement and sensor model information enable us to generate the point cloud coordinates using the standard ALS ground coordinate equation:
 
-![](img/LidarEqn.svg)
+![](../img/LidarEqn.svg)
 
 We use the ALS ground coordinate equation to propagate the measurement uncertainties into covariance matrices for each ground point via the General Law Of Propagation of Variance (GLOPOV).
 
@@ -33,7 +33,7 @@ If you are familiar with lidar TPU, the above discussion will be familiar - and 
 
 With introductory remarks out of the way, let's walk through a real-world example of generating per-point TPU for a lidar point cloud dataset. We have been provided with 19 tiles of ALS data collected over the University of Houston campus in LAS file format and a colleague has requested TPU on the data inside an area of interest, which they have defined with a KML file.
 
-![area-of-interest](img/area-of-interest.png)
+![area-of-interest](../img/area-of-interest.png)
 
 Before we get going, a word of caution about this example. It uses data from a triple channel (i.e., three laser) ALS sensor, the Optech Titan. This makes some of the processing steps more complex than a traditional single channel ALS sensor.
 
@@ -91,7 +91,7 @@ Prior to even visualizing the data, it's worth checking that our data contains `
 }
 ```
 
-Good news - the data contains the necessary fields. However, PDAL is concerned about a "WKT flag" not being set. This relates to the coordinate reference system (CRS), so let's see if what the CRS is.
+Good news - the data contains the necessary fields. However, PDAL is concerned about a "WKT flag" not being set. This relates to the coordinate reference system (CRS), so let's see what the CRS is.
 
 ```bash
 (pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ pdal info ./tiles/las/pt271000_3290000.las --metadata
@@ -175,7 +175,7 @@ One remaining item that we will check later on is the correctness of the `ScanAn
 
 ### **3. Data Visualization**
 
-We can load all the LAZ tiles into, say, CloudCompare, but that's going to take a long time and not perform very well. And I'd prefer to load the data into QGIS where we can easily overlay the KML of the area of interest. To do this, we'll convert our LAZ tiles into an Entwine Point Tile (EPT) index, which will enable us to view the point cloud data inside QGIS without loading all the points at once. Building the EPT index will take some time, but better to burn that time once rather than every time you want to view the data.
+We can load all the LAZ tiles into, say, CloudCompare, but that's going to take a long time and not perform very well. I'd prefer to load the data into QGIS where we can easily overlay the KML of the area of interest. To do this, we'll convert our LAZ tiles into an Entwine Point Tile (EPT) index, which will enable us to view the point cloud data inside QGIS without loading all the points at once. Building the EPT index will take some time, but better to burn that time once rather than every time you want to view the data.
 
 ```bash
 (pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ entwine build -i ./tiles/laz -o ./tiles/laz/ept
@@ -189,15 +189,15 @@ We can load all the LAZ tiles into, say, CloudCompare, but that's going to take 
 
 Now we can very quickly view this data inside QGIS by going to the **Data Source Manager** > **Point Cloud** and browsing to the to the newly created `ept.json` file. We can color by the Z coordinate and overlay the KML area of interest (black box in this case).
 
-![](img/cloud-aoi-elevation.png)
+![](../img/cloud-aoi-elevation.png)
 
 Ah! We see that our colleague has requested virtually the entire data collect. Therefore, we'll generate TPU for all the data and clip to their desired boundary at the end. There is also some funky data in there - what's up with the blue trapezoidal looking things? If we go to **View** > **New 3D Map View** and look at the data obliquely, we can see the trapezoids appear to be clusters of mid-air returns.
 
-![](img/cloud-aoi-elevation-oblique.png)
+![](../img/cloud-aoi-elevation-oblique.png)
 
 If we select the **Identify** tool and click one these artifact points, we find that they do not have a classification value, i.e., their classification value is zero. We'll use this knowledge to remove these points during subsequent processing. Finally, we can also color the data by `PointSourceId`, which makes it clear that this field holds the flightline number.
 
-![](img/cloud-aoi-pointsourceid.png)
+![](../img/cloud-aoi-pointsourceid.png)
 
 With some context on how much of the data needs to be processed (all of it), knowledge of some artifacts that will need to be removed, and knowledge of the field that stores the flightline number, we are ready to move forward. 
 
@@ -306,11 +306,11 @@ Now we are ready to extract flightlines. Note that we are using a different meth
 
 Let's take a look at an extracted flightline to make sure things look reasonable and also, as discussed previously in the Data Check and Cleaning step, check that the signs of the `ScanAngleRank` values are correct. Let's open flightline 111 in CloudCompare and color the points by the `GpsTime` field.
 
-![](img/flightline111-GpsTime.png)
+![](../img/flightline111-GpsTime.png)
 
 Yep, that looks like a flightline, and we can see that the aircraft was moving from right to left (west). Now let's color the points by `ScanAngleRank`.
 
-![](img/flightline111-ScanAngleRank.png)
+![](../img/flightline111-ScanAngleRank.png)
 
 Uh-oh. Per the [ASPRS LAS specification](http://www.asprs.org/wp-content/uploads/2019/03/LAS_1_4_r14.pdf), negative scan angles should be to left side of the aircraft, or downward in this image. These angles are reversed. We need to correct the angles since `filters.sritrajectory` makes use of them (you'll end up with incorrect `Azimuth` and `Pitch` values, otherwise). We'll do this by multiplying the `ScanAngleRank` field of each point by `-1`. We'll move the existing, incorrect flightlines to a new `temp` folder first. PDAL does not allow us to correct the files "in place" (same input and output name and location). We'll delete the existing, incorrect data after we generate corrected files.
 
@@ -323,7 +323,7 @@ Uh-oh. Per the [ASPRS LAS specification](http://www.asprs.org/wp-content/uploads
 
 Now the `ScanAngleRank` field is correct.
 
-![](img/flightline111-ScanAngleRank-corrected.png)
+![](../img/flightline111-ScanAngleRank-corrected.png)
 
 ### **6. Trajectory Creation**
 
@@ -345,7 +345,7 @@ We need a trajectory for each flightline in order to generate TPU for each point
 
 Let's open the trajectory for flightline 112 in CloudCompare (the point cloud for flightline 111 is already loaded) and view from the side.
 
-![](img/flightline111-trajectory112-profile-view.png)
+![](../img/flightline111-trajectory112-profile-view.png)
 
 Yep, looks that like an aircraft trajectory above the point cloud. Both are colored by `GpsTime`.
 
@@ -455,9 +455,9 @@ OK, now we're ready to generate TPU. At last.
 
 Let's take a look at the X-, Y-, and Z-component TPU (standard deviations) for flightline 111 in CloudCompare. They look reasonable. The color stretches are 0.08-0.10 meters for `StdX`, 0.08-0.10 meters for `StdY`, and 0.03-0.09 meters for `StdZ` (CloudCompare's color bars are not very informative if you make large adjustments to the stretch).
 
-![](img/flightline111-StdX.png)
-![](img/flightline111-StdY.png)
-![](img/flightline111-StdZ.png)
+![](../img/flightline111-StdX.png)
+![](../img/flightline111-StdY.png)
+![](../img/flightline111-StdZ.png)
 
 To finish, let's re-tile the flightline TPU point clouds and then crop the tiles to the desired boundary. We'll deliver both the complete and cropped tile sets to our colleague. Be prepared to wait - the tiling took about 70 minutes on my machine.
 
