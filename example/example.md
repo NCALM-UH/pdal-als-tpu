@@ -46,9 +46,9 @@ Before we get going, a word of caution about this example. It uses data from a t
 4. In order to use the `sritrajectory` and `als_tpu` PDAL plugin filters, you'll need to build both of them from source. Unfortunately, the `sritrajectory` filter is not open to the public yet (efforting on that). Source files and install instructions for the `als_tpu` filter are on GitHub [here](https://github.com/pjhartzell/pdal-als-tpu).
 5. We'll use [CloudCompare](https://www.danielgm.net/cc/) and [QGIS](https://www.qgis.org/en/site/) to visualize the point clouds.
 
-**Information:**
-1. Point cloud data from an ALS sensor with an oscillating mirror (sawtooth ground pattern) or rotating mirror (parallel ground pattern) scanning mechanism. Lidar sensors that generate circular ground patterns via a Risley prism are not supported. In our case, we have point cloud data from a Titan sensor, which uses an oscillating mirror.
-2. ALS sensor metadata. We need to know the make and model of the laser scanner and the IMU in order to look up predicted measurement uncertainties (e.g., lidar range, scan angle, trajectory location and attitude). This is, perhaps, the weak point in the process since it requires some knowledge of the collection process beyond just the point cloud data. Our data was captured with an Optech Titan coupled with a Northrup Grumman LN200 IMU. Some web searching turns up datasheets that contain the measurement uncertainty information we need. 
+**Data:**
+1. Point cloud data: Must be from an ALS sensor with an oscillating mirror (sawtooth ground pattern) or rotating mirror (parallel ground pattern) scanning mechanism. Lidar sensors that generate circular ground patterns via a Risley prism are not supported. In our case, we have point cloud data from a Titan sensor, which uses an oscillating mirror.
+2. ALS sensor metadata: We need to know the make and model of the laser scanner and the IMU in order to look up predicted measurement uncertainties (e.g., lidar range, scan angle, trajectory location and attitude). This isthe weak point in the process since it requires some knowledge of the collection process beyond just the point cloud data. Our data was captured with an Optech Titan coupled with a Northrup Grumman LN200 IMU. Some web searching turns up datasheets that contain much of the measurement uncertainty information we need. 
 
 ### **2. Data Check and Cleaning**
 
@@ -91,7 +91,7 @@ Prior to even visualizing the data, it's worth checking that our data contains `
 }
 ```
 
-Good news - the data contains the necessary fields. However, PDAL is concerned about a "WKT flag" not being set. This relates to the coordinate reference system (CRS), so let's see what the CRS is.
+Good news - the data contains the necessary fields (dimensions). However, PDAL is concerned about a "WKT flag" not being set. This relates to the coordinate reference system (CRS), so let's see what the CRS is.
 
 ```bash
 (pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ pdal info ./tiles/las/pt271000_3290000.las --metadata
@@ -169,9 +169,9 @@ Uh-oh. There is none. Note the missing `srs` (SRS = Spatial Reference System = C
 
 ```
 
-Note that we used the `parallel` package to run the tile translations in order to take advantage of all available CPUs.
+Note that we used the `parallel` package to run the tile translations on all available CPUs.
 
-One remaining item that we will check later on is the correctness of the `ScanAngleRank` field. In particular, we want to check that the sign of the values is correct. We'll look at this once we extract flightlines from the tiled data.
+One remaining item that we will check later on is the correctness of the `ScanAngleRank` field. In particular, we want to check that the sign of the values is correct. We'll look at this, and explain why it matters, once we extract flightlines from the tiled data.
 
 ### **3. Data Visualization**
 
@@ -203,7 +203,7 @@ With some context on how much of the data needs to be processed (all of it), kno
 
 ### **4. Surface Normals**
 
-In order to include the influence of the laser ray to ground surface incidence angle in the TPU estimation, we need to compute an estimated surface normal vector for each point. The `als_tpu` filter uses the surface normal to compute the incidence angle. We should also remove the in-air point returns discovered during data visualization before computing the normals. We can use PDAL to accomplish both tasks.
+In order to include the laser ray to ground surface incidence angle in the TPU estimation, we need to compute an estimated surface normal vector for each point. We should also remove the in-air point returns discovered during data visualization before computing the normals. We can use PDAL to accomplish both tasks.
 
 ```bash
 (pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ mkdir ./tiles/laz-normal
@@ -219,9 +219,9 @@ In order to include the influence of the laser ray to ground surface incidence a
 
 ### **5. Flightline Extraction**
 
-To generate TPU, we need the data organized in the manner in which it was collected - grouped into flightlines. This allows us to efficiently query the associated flightline trajectory for the sensor position and attitude information for each point. 
+To generate TPU, we need the data organized in the manner in which it was collected: grouped into flightlines. This allows us to efficiently query the associated flightline trajectory for the sensor position and attitude information for each point. 
 
-We know from our data visualization that each point is tagged with its flightline number in the `PointSourceId` field. We can use that information to extract the individual flightlines using PDAL's `filters.range`. We can do this for each tile and each flightline number, which will produce quite a few files given the large number of tile-flightline combinations. This would also require all the flightlines that span multiple tiles to be merged afterwards. Alternatively, we can merge all the tiles into a single file first and then extract each flightline in its entirety from the merged file. The former method is probably better for very large collects where merging all the tiles into a single file would create a monster that your machine can't work with. Our project is small enough (about 350 million points) that the latter brute force approach will work. For reference, I have 64GB or RAM on my machine. We'll also sort by time after the merge so that the eventual extracted flightline data is also sorted by time. This is both good form and required for the `sritrajectory` filter. Get a cup of coffee while this runs - it took 18 minutes on my machine. This is not an operation we can run parallel.
+We know from our data visualization that each point is tagged with its flightline number in the `PointSourceId` field. We can use that information to extract the individual flightlines using PDAL's `filters.range`. We could do this for each tile and each flightline number, which will produce quite a few files given the large number of tile-flightline combinations. This would also require all the flightlines that span multiple tiles to be merged afterwards. Alternatively, we can merge all the tiles into a single file first and then extract each flightline in its entirety from the merged file. The former method is probably better for very large collects where merging all the tiles into a single file would create a monster that your machine can't work with. Our project is small enough (about 350 million points) that the latter brute force approach will work. We'll also sort by time after the merge so that the eventual extracted flightline data is also sorted by time. This is both good form and required for the `sritrajectory` filter. This operation can not be run in parallel and took about 20 minutes on my machine.
 
 ```bash
 (pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ echo '{ "pipeline": [ "./tiles/laz-normal/*.laz", { "type":"filters.merge" }, { "type":"filters.sort", "dimension":"GpsTime" }, { "type":"writers.las", "filename":"./tiles/laz-normal/merged-normal.laz", "minor_version":4, "extra_dims":"all" } ] }' | pdal pipeline --stdin

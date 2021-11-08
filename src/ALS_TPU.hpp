@@ -61,7 +61,6 @@ namespace pdal {
             double m_stdLeverXyz = 0.0;
             double m_beamDivergence = 0.0;
 
-            // for testing
             Dimension::Id m_lidarRange, m_scanAngleRL, m_scanAngleFB, m_incAngle;
             Dimension::Id m_xVar, m_yVar, m_zVar, m_xyCov, m_xzCov, m_yzCov;
             Dimension::Id m_xStd, m_yStd, m_zStd;

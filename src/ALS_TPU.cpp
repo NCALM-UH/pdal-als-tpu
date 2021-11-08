@@ -129,33 +129,33 @@ namespace pdal
 
     void ALS_TPU::addDimensions(PointLayoutPtr layout)
     {
-        // production
-        m_xVar = layout->registerOrAssignDim("VarianceX", Type::Double);
-        m_yVar = layout->registerOrAssignDim("VarianceY", Type::Double);
-        m_zVar = layout->registerOrAssignDim("VarianceZ", Type::Double);
-        m_xyCov = layout->registerOrAssignDim("CovarianceXY", Type::Double);
-        m_xzCov = layout->registerOrAssignDim("CovarianceXZ", Type::Double);
-        m_yzCov = layout->registerOrAssignDim("CovarianceYZ", Type::Double);
+        // standard output
+        m_xVar = layout->registerOrAssignDim("VarianceX", Type::Float);
+        m_yVar = layout->registerOrAssignDim("VarianceY", Type::Float);
+        m_zVar = layout->registerOrAssignDim("VarianceZ", Type::Float);
+        m_xyCov = layout->registerOrAssignDim("CovarianceXY", Type::Float);
+        m_xzCov = layout->registerOrAssignDim("CovarianceXZ", Type::Float);
+        m_yzCov = layout->registerOrAssignDim("CovarianceYZ", Type::Float);
         if (m_includeIncidenceAngle)
-            m_incAngle = layout->registerOrAssignDim("IncidenceAngle", Type::Double);
+            m_incAngle = layout->registerOrAssignDim("IncidenceAngle", Type::Float);
 
         // extended output
         if (m_extendedOutput)
         {
-            m_lidarRange = layout->registerOrAssignDim("LidarRange", Type::Double);
-            m_scanAngleRL = layout->registerOrAssignDim("ScanAngleRL", Type::Double);
-            m_scanAngleFB = layout->registerOrAssignDim("ScanAngleFB", Type::Double);
+            m_lidarRange = layout->registerOrAssignDim("LidarRange", Type::Float);
+            m_scanAngleRL = layout->registerOrAssignDim("ScanAngleRL", Type::Float);
+            m_scanAngleFB = layout->registerOrAssignDim("ScanAngleFB", Type::Float);
 
-            m_xStd = layout->registerOrAssignDim("StdX", Type::Double);
-            m_yStd = layout->registerOrAssignDim("StdY", Type::Double);
-            m_zStd = layout->registerOrAssignDim("StdZ", Type::Double);
+            m_xStd = layout->registerOrAssignDim("StdX", Type::Float);
+            m_yStd = layout->registerOrAssignDim("StdY", Type::Float);
+            m_zStd = layout->registerOrAssignDim("StdZ", Type::Float);
 
-            m_trajX = layout->registerOrAssignDim("TrajX", Type::Double);
-            m_trajY = layout->registerOrAssignDim("TrajY", Type::Double);
-            m_trajZ = layout->registerOrAssignDim("TrajZ", Type::Double);
-            m_trajRoll = layout->registerOrAssignDim("TrajRoll", Type::Double);
-            m_trajPitch = layout->registerOrAssignDim("TrajPitch", Type::Double);
-            m_trajHeading = layout->registerOrAssignDim("TrajHeading", Type::Double);
+            m_trajX = layout->registerOrAssignDim("TrajX", Type::Float);
+            m_trajY = layout->registerOrAssignDim("TrajY", Type::Float);
+            m_trajZ = layout->registerOrAssignDim("TrajZ", Type::Float);
+            m_trajRoll = layout->registerOrAssignDim("TrajRoll", Type::Float);
+            m_trajPitch = layout->registerOrAssignDim("TrajPitch", Type::Float);
+            m_trajHeading = layout->registerOrAssignDim("TrajHeading", Type::Float);
         }
     }
 
