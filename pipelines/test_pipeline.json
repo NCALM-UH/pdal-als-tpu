@@ -1,17 +1,17 @@
 [
     {
         "type": "readers.las",
-        "filename": "clouds/C2_L2_s-Clip.las",
+        "filename": "test_uh-sorted-normal64.las",
         "tag": "cloud"
     },
     {
         "type": "readers.las",
-        "filename": "trajectories/test_uh-sorted-normal64-sritraj.las",
+        "filename": "test_uh-sorted-normal64-sritraj.las",
         "tag": "trajectory"
     },
     {
         "type": "filters.als_tpu",
-        "yaml_file": "profiles/Titan-C2-1064nm.yml",
+        "profile_filename": "example/sensor-profiles/Titan-C2-1064nm.json",
         "include_inc_angle": "false",
         "inputs": [
             "cloud",
@@ -22,6 +22,6 @@
         "type": "writers.las",
         "minor_version": 4,
         "extra_dims": "all",
-        "filename": "clouds/C2_L2_s-Clip-test-tpu.las"
+        "filename": "test_uh-sorted-normal64-tpu.las"
     }
 ]
