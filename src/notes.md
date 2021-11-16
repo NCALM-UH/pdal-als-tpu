@@ -60,6 +60,11 @@ conda env config vars set SRI_TRAJECTORY_CONFIG_DIR="${CONDA_PREFIX}/resources/t
 pdal --drivers | grep trajectory
 ```
 
-We also need a yaml library
-1. `conda install -c conda-forge yaml-cpp`
-2. You'll need to add that to your CMakeLists file.
+## ALS-TPU Install Instructions
+Install PDAL and nlohmann's json library into a fresh Conda environment
+
+`conda install -c conda-forge pdal nlohmann_json`
+
+Tell cmake to look inside the conda environment for the pdal package
+
+`conda env config vars set CMAKE_MODULE_PATH=${CONDA_PREFIX}`

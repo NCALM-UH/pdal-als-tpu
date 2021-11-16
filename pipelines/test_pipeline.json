@@ -11,7 +11,7 @@
     },
     {
         "type": "filters.als_tpu",
-        "profile_filename": "example/sensor-profiles/Titan-C2-1064nm.json",
+        "profile_filename": "example/sensor-profiles/Titan-C1-1550nm.json",
         "include_inc_angle": "false",
         "inputs": [
             "cloud",

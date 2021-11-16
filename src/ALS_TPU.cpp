@@ -35,7 +35,6 @@
 #include "ALS_TPU.hpp"
 #include <math.h>
 #include <Eigen/Dense>
-// #include "yaml-cpp/yaml.h"
 #include <nlohmann/json.hpp>
 #include <pdal/io/LasWriter.hpp>
 #include <pdal/io/BufferReader.hpp>
@@ -77,52 +76,53 @@ namespace pdal
     {
         // do not allow both predefined profile and yaml file profile options
         if (m_profileDefArg->set() && m_profileFileArg->set())
-            throwError("Can not specify both the 'profile_predefined'and 'profile_filename' options.");
+            throw pdal_error("Cannot specify both the 'profile_predefined'and 'profile_filename' options.");
 
         // populate the observation uncertainties
         if (m_profileFileArg->set())
         {
+            // check file existence
+            if (!FileUtils::fileExists(m_profileFile))
+                throw pdal_error("Cannot read profile file '" + m_profileFile + "'.");
+
+            // open and check for an uncertainties entry
             std::istream* paramFile = FileUtils::openFile(m_profileFile);
             nlohmann::json params;
             *paramFile >> params;
-            for (auto& entry : params.items())
+
+            if (!params.contains("uncertainties"))
+                throw pdal_error("No 'uncertainties' entry found in '" + m_profileFile + "'.");
+
+            // pull out the uncertainties
+            for (auto& entry : params["uncertainties"])
             {
-                std::cout << entry.key() << ", " << entry.value() << std::endl;
+                std::string name = entry["name"];
+                double value = entry["value"];
+
+                if (Utils::iequals(name, "std_lidar_range"))
+                    m_stdLidarRange = value;
+                else if (Utils::iequals(name, "std_scan_angle"))
+                    m_stdScanAngle = value;
+                else if (Utils::iequals(name, "std_sensor_xy"))
+                    m_stdSensorXy = value;
+                else if (Utils::iequals(name, "std_sensor_z"))
+                    m_stdSensorZ = value;
+                else if (Utils::iequals(name, "std_sensor_rollpitch"))
+                    m_stdSensorRollPitch = value;
+                else if (Utils::iequals(name, "std_sensor_yaw"))
+                    m_stdSensorYaw = value;
+                else if (Utils::iequals(name, "std_bore_rollpitch"))
+                    m_stdBoreRollPitch = value;
+                else if (Utils::iequals(name, "std_bore_yaw"))
+                    m_stdBoreYaw = value;
+                else if (Utils::iequals(name, "std_lever_xyz"))
+                    m_stdLeverXyz = value;
+                else if (Utils::iequals(name, "beam_divergence"))
+                    m_beamDivergence = value;
+                else
+                    throw pdal_error("Unrecognized uncertainty name '" + name + "' in '" + m_profileFile + "'.");
             }
-            exit(-1);
         }
-
-        // {
-        //     YAML::Node profile = YAML::LoadFile(m_profileFile);
-        //     for(YAML::const_iterator it=profile.begin(); it!=profile.end(); ++it)
-        //     {
-        //         std::string key =  it->first.as<std::string>();
-        //         double value = it->second.as<double>();
-
-        //         if (Utils::iequals(key, "std_lidar_range"))
-        //             m_stdLidarRange = value;
-        //         else if (Utils::iequals(key, "std_scan_angle"))
-        //             m_stdScanAngle = value;
-        //         else if (Utils::iequals(key, "std_sensor_xy"))
-        //             m_stdSensorXy = value;
-        //         else if (Utils::iequals(key, "std_sensor_z"))
-        //             m_stdSensorZ = value;
-        //         else if (Utils::iequals(key, "std_sensor_rollpitch"))
-        //             m_stdSensorRollPitch = value;
-        //         else if (Utils::iequals(key, "std_sensor_yaw"))
-        //             m_stdSensorYaw = value;
-        //         else if (Utils::iequals(key, "std_bore_rollpitch"))
-        //             m_stdBoreRollPitch = value;
-        //         else if (Utils::iequals(key, "std_bore_yaw"))
-        //             m_stdBoreYaw = value;
-        //         else if (Utils::iequals(key, "std_lever_xyz"))
-        //             m_stdLeverXyz = value;
-        //         else if (Utils::iequals(key, "beam_divergence"))
-        //             m_beamDivergence = value;
-        //         else
-        //             throwError("Unrecognized key in YAML file.");
-        //     }
-        // }
         else if (m_profileDefArg->set())
             setProfile();
         else
