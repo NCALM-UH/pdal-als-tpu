@@ -1,37 +1,6 @@
-# ALS TPU from Point Clouds
+# Example Workflow
 
-![](../img/flightline111-StdZ-large.png)
-
-## Motivation
-
-Generating total propagated uncertainty (TPU), also referred to as "propagated error", for airborne laser scanning (ALS) point cloud data requires knowledge of the ALS measurements necessary to compute the ground coordinates, the measurement uncertainties (expressed as standard deviations), and the ALS sensor model. The ALS measurements (or "observations") consist of: 
-
-- Lidar range
-- Scanner angle
-- Sensor location (e.g., llh, xyz)
-- Sensor attitude (roll, pitch, heading)
-- Axes misalignment between the scanner and IMU (boresight roll, pitch, heading)
-- Relative location between the scanner and IMU (lever arm xyz)
-
-Note that each measurement also needs a corresponding estimated uncertainty. The ALS sensor model refers to items such as the inertial motion unit (IMU), scanner, and local level reference frame definitions, and rotation types and orders for the boresight and IMU angles. Together, the measurement and sensor model information enable us to generate the point cloud coordinates using the standard ALS ground coordinate equation:
-
-![](../img/LidarEqn.svg)
-
-We use the ALS ground coordinate equation to propagate the measurement uncertainties into covariance matrices for each ground point via the General Law Of Propagation of Variance (GLOPOV).
-
-The above summary should, hopefully, make obvious the challenge that geospatial practitioners face when per-point ALS TPU is desired for a point cloud dataset. Neither the ALS observations nor the sensor model information is typically available, and even if it were, a non-trivial algorithm would need to be developed to generate the TPU.
-
-## ALS TPU with PDAL
-
-To address the challenge outlined above, two plugin filters have been developed for the [Point Data Abstraction Library](https://pdal.io/) (PDAL) that enable generation of per-point ALS TPU estimates from lidar point data alone. The first plugin, `filters.sritrajectory`, generates an estimate of the ALS sensor trajectory, which provides six (technically five, as roll is not estimated) of the necessary ALS observations: sensor location and attitude (X, Y, Z, Roll, Pitch, Heading). Given trajectory information and a generic ALS sensor model definition, the lidar range and scanner angle measurements for each point can be inverted. This inversion and the ultimate TPU computation is performed in the second PDAL plugin, `filters.als_tpu`. The remaining observations - boresight angles and lever arm displacements - are set equal to zero. These values are typically quite small, so a zero value has little impact on the final TPU values.
-
-For each observation necessary to generate a ground coordinate from the lidar equation, including those set to zero, a corresponding uncertainty must be provided. Many of these are assumed static for a given ALS collection campaign (boresight angles, lever arm displacements, sensor location and attitude), or we only have knowledge of a single estimate provided by the sensor manufacturer (lidar range, scanner angle). However, the influences of a non-zero and range-dependent laser beam width and the incidence angle at which the laser beam intercepts the ground surface contribute non-static uncertainties to the scan angle and lidar range that must be individually estimated for each instance of the lidar equation. 
-
-If you are familiar with lidar TPU, the above discussion will be familiar - and probably inspire points of contention. If you are not familiar with lidar TPU, references are provided at the end of this document. Note that the `sritrajectory` filter is not yet open source (but should be soon). The source code for the `als_tpu` filter is still being refined, but is available on [Github](https://github.com/pjhartzell/pdal-als-tpu).
-
-## Example Workflow
-
-With introductory remarks out of the way, let's walk through a real-world example of generating per-point TPU for a lidar point cloud dataset. We have been provided with 19 tiles of ALS data collected over the University of Houston campus in LAS file format and a colleague has requested TPU on the data inside an area of interest, which they have defined with a KML file.
+Let's walk through a real-world example of generating per-point TPU for a lidar point cloud dataset. We have been provided with 19 tiles of ALS data collected over the University of Houston campus in LAS file format and a colleague has requested TPU on the data inside an area of interest, which they have defined with a KML file.
 
 ![area-of-interest](../img/area-of-interest.png)
 
@@ -48,7 +17,7 @@ Before we get going, a word of caution about this example. It uses data from a t
 
 **Data:**
 1. Point cloud data: Must be from an ALS sensor with an oscillating mirror (sawtooth ground pattern) or rotating mirror (parallel ground pattern) scanning mechanism. Lidar sensors that generate circular ground patterns via a Risley prism are not supported. In our case, we have point cloud data from a Titan sensor, which uses an oscillating mirror.
-2. ALS sensor metadata: We need to know the make and model of the laser scanner and the IMU in order to look up predicted measurement uncertainties (e.g., lidar range, scan angle, trajectory location and attitude). This isthe weak point in the process since it requires some knowledge of the collection process beyond just the point cloud data. Our data was captured with an Optech Titan coupled with a Northrup Grumman LN200 IMU. Some web searching turns up datasheets that contain much of the measurement uncertainty information we need. 
+2. ALS sensor metadata: We need to know the make and model of the laser scanner and the IMU in order to look up predicted measurement uncertainties (e.g., lidar range, scan angle, trajectory location and attitude). This is a weak point in the process since it requires some knowledge of the collection process beyond just the point cloud data. Our data was captured with an Optech Titan coupled with a Northrup Grumman LN200 IMU. Some web searching turns up datasheets that contain much of the measurement uncertainty information we need. 
 
 ### **2. Data Check and Cleaning**
 
@@ -229,7 +198,7 @@ We know from our data visualization that each point is tagged with its flightlin
 
 I typically create pipelines in a JSON file and then call `pdal pipeline <my-pipe.json>`. But the above method avoids the requirement to create a separate file, which is fine for simple pipelines (unless you are using pipeline files to document your processing workflow).
 
-In order to extract data by flightline, we need the flightline numbers. We can list all the flightline numbers in the merged file using PDAL's `info` command and `enumerate` option. To save space, I'm only going to show the relevant output below. The ellipses (`...`) indicate locations of the additional (not shown) output. This command also took quite some time.
+In order to extract data by flightline, we need the flightline numbers. We can list all the flightline numbers in the merged file using PDAL's `info` command and `enumerate` option. To save space, I'm only going to show the relevant output below. The ellipses (`...`) indicate locations of the additional (not shown) output. This command also took quite some time to run.
 
 ```bash
 (pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ pdal info ./tiles/laz-normal/merged-normal.laz --enumerate "PointSourceId"
@@ -289,7 +258,7 @@ Create a variable to hold the flightline numbers for use with the `parallel` pac
 (pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ lines="111 112 113 211 212 213 311 312 313 411 412 413 511 512 513 611 612 613 711 712 713 811 812 813 911 912 913 1011 1012 1013 1111 1112 1113"
 ```
 
-Now we are ready to extract flightlines. Note that we are using a different method for feeding arguments (the flightline numbers in this case) into `parallel` this time. We could generate correct `stdin` by placing the flightline numbers into an array variable and then pipe them into `parallel` via a `printf` command, but the method shown below is cleaner. Plus, we'll be using this new method again in a later step, so no sense avoiding it.
+Now we are ready to extract flightlines. Note that we will use a different method for feeding arguments (the flightline numbers in this case) into `parallel` this time. We could generate correct `stdin` by placing the flightline numbers into an array variable and then pipe them into `parallel` via a `printf` command, but the method shown below is cleaner. Plus, we'll be using this new method again in a later step, so no sense avoiding it.
 
 ```bash
 (pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ mkdir flightlines
@@ -372,34 +341,67 @@ Now we can work on generating the per-point TPU information for each flightline.
 └── trajectories
 ```
 
-The `sensor-profiles` directory will hold YAML files that contain the sensor measurement uncertainty values. Since we have three channels, and their uncertainty paramaters are not all identical (almost, but not quite), we will have three YAML files. Here is the YAML file for channel 2 (the others are in the GitHub repository).
+The `sensor-profiles` directory will hold JSON files that contain the sensor measurement uncertainty values. Since we have three channels, and their uncertainty parameters are not all identical (almost, but not quite), we will have three JSON files. I've named them `C1.json`, `C2.json`, and `C3.json`. Here is the `C2.json` file contents:
 
-```yaml
-# Optech Titan (1064nm channel, nadir looking) with a Northrup Grumman LN200
-
-# meters (Titan datasheet)
-std_lidar_range: 0.008
-# degrees (unknown, using angular resolution of 0.001 deg from Optech 3100 shown in Glennie's 2007 JAG paper)
-std_scan_angle: 0.001
-# meters (LN200 datasheet, airborne PP RMS = 0.01 meters)
-std_sensor_xy: 0.01
-# meters (LN200 datasheet, airborne PP RMS = 0.02 meters)
-std_sensor_z: 0.02
-# degrees (LN200 datasheet, PP RMS = 0.005 degrees)
-std_sensor_rollpitch: 0.005
-# degrees (LN200 datasheet, PP RMS = 0.007 degrees)
-std_sensor_yaw: 0.007
-# degrees (Glennie, 2007, JAG, Table 2)
-std_bore_rollpitch: 0.001
-# degrees (Glennie, 2007, JAG, Table 2)
-std_bore_yaw: 0.004
-# meters (conservative estimate from Glennie's 2007 JAG paper)
-std_lever_xyz: 0.02
-# milliradians (Titan datasheet: 0.35 mrad at 1/e * sqrt(2) = 0.49 mrad at 1/e^2)
-beam_divergence: 0.49
+```json
+{
+    "system": "Optech Titan channel 2 (1064nm, nadir looking) with a Northrup Grumman LN200",
+    "uncertainties": [
+        {
+            "name": "std_lidar_range",
+            "source": "Titan datasheet",
+            "value": 0.008
+        },
+        {
+            "name": "std_scan_angle",
+            "source": "not found, using angular resolution of 0.001 deg from Optech 3100 shown in Glennie's 2007 JAG paper",
+            "value": 0.001
+        },
+        {
+            "name": "std_sensor_xy",
+            "source": "LN200 datasheet, airborne PP RMS = 0.01 meters",
+            "value": 0.01
+        },
+        {
+            "name": "std_sensor_z",
+            "source": "LN200 datasheet, airborne PP RMS = 0.02 meters",
+            "value": 0.02
+        },
+        {
+            "name": "std_sensor_rollpitch",
+            "source": "LN200 datasheet, PP RMS = 0.005 degrees",
+            "value": 0.005
+        },
+        {
+            "name": "std_sensor_yaw",
+            "source": "LN200 datasheet, PP RMS = 0.007 degrees",
+            "value": 0.007
+        },
+        {
+            "name": "std_bore_rollpitch",
+            "source": "unknown, using 0.001 degrees from Table 2 in Glennie's 2007 JAG paper",
+            "value": 0.001
+        },
+        {
+            "name": "std_bore_yaw",
+            "source": "unknown, using 0.004 degrees from Table 2 in Glennie's 2007 JAG paper",
+            "value": 0.004
+        },
+        {
+            "name": "std_lever_xyz",
+            "source": "unknown, using conservative etimate of 2cm from Glennie's 2007 JAG paper",
+            "value": 0.02
+        },
+        {
+            "name": "beam_divergence",
+            "source": "Titan datasheet: 0.35 mrad at 1/e * sqrt(2) = 0.49 mrad at 1/e^2",
+            "value": 0.49
+        }
+    ]
+}
 ```
 
-Now let's create a PDAL pipeline for the TPU filter. I've saved this to `./tpu/tpu.json` .
+Now let's create a PDAL pipeline for the TPU filter. I've saved this to `./tpu/tpu.json`.
 
 ```json
 [
@@ -415,7 +417,7 @@ Now let's create a PDAL pipeline for the TPU filter. I've saved this to `./tpu/t
     },
     {
         "type": "filters.als_tpu",
-        "yaml_file": "",
+        "measurement_stdev": "",
         "inputs": [
             "cloud",
             "trajectory"
@@ -430,7 +432,7 @@ Now let's create a PDAL pipeline for the TPU filter. I've saved this to `./tpu/t
 ]
 ```
 
-Note all the blank filenames! The `readers.las`, `readers.text`, and `writers.las` filenames and the YAML filename in `filters.als_tpu` are all blank. We'll override all these blank values when calling the pipeline. Setting it up this way allows us to run things with the `parallel` package. Recall that we have a list of the flightline numbers in the `lines` variable.
+Note all the blank filenames! The `readers.las`, `readers.text`, and `writers.las` filenames and the JSON filename (`measurement_stdev` option) in `filters.als_tpu` are all blank. We'll override all these blank values when calling the pipeline. Setting it up this way allows us to run things with the `parallel` package. Recall that we have a list of the flightline numbers in the `lines` variable.
 
 ```bash
 (pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ echo $lines
@@ -444,13 +446,13 @@ We'll create two more variables to help us feed the `parallel` command.
 (pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ channels="C1 C2 C3 C1 C2 C3 C1 C2 C3 C1 C2 C3 C1 C2 C3 C1 C2 C3 C1 C2 C3 C1 C2 C3 C1 C2 C3 C1 C2 C3 C1 C2 C3"
 ```
 
-The `trajectories` variable contains the trajectory name that will be used for each corresponding flightline number, hence the repetition (each of the three channels will use the same trajectory). The `channels` variable will be used to specify the appropriate YAML file that contains the sensor measurement uncertainty parameters. 
+The `trajectories` variable contains the trajectory name that will be used for each corresponding flightline number, hence the repetition (each of the three channels will use the same trajectory). The `channels` variable will be used to specify the appropriate JSON file that contains the sensor measurement uncertainty parameters. 
 
 
 OK, now we're ready to generate TPU. At last.
 
 ```bash
-(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ parallel -j+0 pdal pipeline ./tpu/tpu.json '--stage.cloud.filename="./flightlines/{1}.laz"' '--stage.trajectory.filename="./trajectories/{2}.txt"' '--filters.als_tpu.yaml_file="./tpu/sensor-profiles/{3}.yml"' '--writers.las.filename="./tpu/flightlines/{1}.laz"' '--writers.las.minor_version=4' '--writers.las.extra_dims="all"' ::: $lines :::+ $trajectories :::+ $channels
+(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ parallel -j+0 pdal pipeline ./tpu/tpu.json '--stage.cloud.filename="./flightlines/{1}.laz"' '--stage.trajectory.filename="./trajectories/{2}.txt"' '--filters.als_tpu.measurement_stdev="./tpu/sensor-profiles/{3}.json"' '--writers.las.filename="./tpu/flightlines/{1}.laz"' ::: $lines :::+ $trajectories :::+ $channels
 ```
 
 Let's take a look at the X-, Y-, and Z-component TPU (standard deviations) for flightline 111 in CloudCompare. They look reasonable. The color stretches are 0.08-0.10 meters for `StdX`, 0.08-0.10 meters for `StdY`, and 0.03-0.09 meters for `StdZ` (CloudCompare's color bars are not very informative if you make large adjustments to the stretch).
@@ -506,12 +508,11 @@ Finally, let's crop the TPU tiles to the requested boundary and built a new EPT 
 (pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ ls ./tpu/tiles/*.laz | parallel -j+0 pdal translate {} ./tpu/tiles-cropped/{/} crop '--filters.crop.polygon="POLYGON((-95.3626777088979 29.7299851318979, -95.3200545956866 29.7304501531127, -95.3194574429247 29.7135007355585, -95.3622914533177 29.7135025021551, -95.3626777088979 29.7299851318979))"' '--filters.crop.a_srs="epsg:4326"' '--writers.las.minor_version=4' '--writers.las.extra_dims="all"'
 (pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ entwine build -i ./tpu/tiles-cropped -o ./tpu/tiles-cropped/ept
 (pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ tree -d -L 3
-
-
-
 ```
 
-![]()
+Here is our final cloud cropped to the area of interest and colored by the Z coordinate.
+
+![](../img/cloud-final-cropped.png)
 
 ### **8. Summary**
 
@@ -521,4 +522,4 @@ Kudos if you've made it this far. It looks like a lot of steps to generate TPU i
 2. Data formatting: flightline extraction and re-tiling, renaming, and cropping for delivery.
 3. Triple channel sensor: three strips of data for each flightline exist that require unique uncertainty parameters but a common trajectory.
 
-But the above example is a real-world look at how to go from a collection of point data that has been dropped in your lap to a set of point cloud tiles cropped to your area of interest that contain per-point TPU information. If you are dealing with a single channel sensor and a clean set of data (perhaps even provided in flightlines rather than tiles), the TPU generation process will be much more streamlined. Refer to the [GitHub repository](https://github.com/pjhartzell/pdal-als-tpu) for the `als_tpu` PDAL plugin filter for a simple example.
+But the above example is a real-world look at how to go from a collection of point data that has been dropped in your lap to a set of point cloud tiles cropped to your area of interest that contain per-point TPU information. If you are dealing with a single channel sensor and a clean set of data (perhaps even provided in flightlines rather than tiles), the TPU generation process will be much more streamlined.

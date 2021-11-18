@@ -1,0 +1,55 @@
+{
+    "system": "Optech Titan channel 3 (532nm, 7 degrees forward looking) with a Northrup Grumman LN200",
+    "uncertainties": [
+        {
+            "name": "std_lidar_range",
+            "source": "Titan datasheet",
+            "value": 0.008
+        },
+        {
+            "name": "std_scan_angle",
+            "source": "not found, using angular resolution of 0.001 deg from Optech 3100 shown in Glennie's 2007 JAG paper",
+            "value": 0.001
+        },
+        {
+            "name": "std_sensor_xy",
+            "source": "LN200 datasheet, airborne PP RMS = 0.01 meters",
+            "value": 0.01
+        },
+        {
+            "name": "std_sensor_z",
+            "source": "LN200 datasheet, airborne PP RMS = 0.02 meters",
+            "value": 0.02
+        },
+        {
+            "name": "std_sensor_rollpitch",
+            "source": "LN200 datasheet, PP RMS = 0.005 degrees",
+            "value": 0.005
+        },
+        {
+            "name": "std_sensor_yaw",
+            "source": "LN200 datasheet, PP RMS = 0.007 degrees",
+            "value": 0.007
+        },
+        {
+            "name": "std_bore_rollpitch",
+            "source": "unknown, using 0.001 degrees from Table 2 in Glennie's 2007 JAG paper",
+            "value": 0.001
+        },
+        {
+            "name": "std_bore_yaw",
+            "source": "unknown, using 0.004 degrees from Table 2 in Glennie's 2007 JAG paper",
+            "value": 0.004
+        },
+        {
+            "name": "std_lever_xyz",
+            "source": "unknown, using conservative etimate of 2cm from Glennie's 2007 JAG paper",
+            "value": 0.02
+        },
+        {
+            "name": "beam_divergence",
+            "source": "Titan datasheet: 0.7 mrad at 1/e * sqrt(2) = 0.99 mrad at 1/e^2",
+            "value": 0.99
+        }
+    ]
+}

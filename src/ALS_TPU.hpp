@@ -46,8 +46,7 @@ namespace pdal {
             std::string getName() const;
 
         private:
-            Arg *m_profileDefArg, *m_profileFileArg;
-            std::string m_profileDef, m_profileFile;
+            std::string m_profileFile, m_stDevFile;
 
             double m_maximumIncidenceAngle;
             double m_noDataValue;

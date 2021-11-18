@@ -63,8 +63,7 @@ namespace pdal
 
     void ALS_TPU::addArgs(ProgramArgs& args)
     {
-        m_profileDefArg = &args.add("profile_predefined", "Predefined sensor observation uncertainties", m_profileDef);
-        m_profileFileArg = &args.add("profile_filename", "JSON file containing observation standard deviations (uncertainties)", m_profileFile);
+        args.add("measurement_stdev", "JSON file containing measurement standard deviations (uncertainties)", m_stDevFile);
         args.add("include_inc_angle", "Include incidence angle in TPU computation", m_includeIncidenceAngle, true);
         args.add("max_inc_angle", "Maximum allowable incidence angle (degrees <90)", m_maximumIncidenceAngle, 85.0);
         args.add("no_data_value", "TPU values when trajectory information is not available", m_noDataValue, -1.0);
