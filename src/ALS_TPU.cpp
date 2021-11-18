@@ -51,7 +51,7 @@ namespace pdal
     {
         "filters.als_tpu",
         "Per-point airborne lidar Total Propagated Uncertainty (TPU) via a generic sensor model.",
-        "http://link/to/documentation"
+        "https://github.com/pjhartzell/pdal-als-tpu"
     };
 
     CREATE_SHARED_STAGE(ALS_TPU, s_info)
@@ -61,9 +61,10 @@ namespace pdal
         return s_info.name;
     }
 
+
     void ALS_TPU::addArgs(ProgramArgs& args)
     {
-        args.add("measurement_stdev", "JSON file containing measurement standard deviations (uncertainties)", m_stDevFile);
+        args.add("uncertainty_file", "JSON file containing measurement standard deviations (uncertainties)", m_uncertaintyFile).setPositional();
         args.add("include_inc_angle", "Include incidence angle in TPU computation", m_includeIncidenceAngle, true);
         args.add("max_inc_angle", "Maximum allowable incidence angle (degrees <90)", m_maximumIncidenceAngle, 85.0);
         args.add("no_data_value", "TPU values when trajectory information is not available", m_noDataValue, -1.0);
@@ -73,59 +74,47 @@ namespace pdal
 
     void ALS_TPU::initialize()
     {
-        // do not allow both predefined profile and yaml file profile options
-        if (m_profileDefArg->set() && m_profileFileArg->set())
-            throw pdal_error("Cannot specify both the 'profile_predefined'and 'profile_filename' options.");
+        // check file existence
+        if (!FileUtils::fileExists(m_uncertaintyFile))
+            throw pdal_error("Cannot read measuremet uncertainty file '" + m_uncertaintyFile + "'.");
 
-        // populate the observation uncertainties
-        if (m_profileFileArg->set())
+        // open and check for an uncertainties entry
+        std::istream* paramFile = FileUtils::openFile(m_uncertaintyFile);
+        nlohmann::json params;
+        *paramFile >> params;
+
+        if (!params.contains("uncertainties"))
+            throw pdal_error("No 'uncertainties' entry found in '" + m_uncertaintyFile + "'.");
+
+        // pull out the uncertainties
+        for (auto& entry : params["uncertainties"])
         {
-            // check file existence
-            if (!FileUtils::fileExists(m_profileFile))
-                throw pdal_error("Cannot read profile file '" + m_profileFile + "'.");
+            std::string name = entry["name"];
+            double value = entry["value"];
 
-            // open and check for an uncertainties entry
-            std::istream* paramFile = FileUtils::openFile(m_profileFile);
-            nlohmann::json params;
-            *paramFile >> params;
-
-            if (!params.contains("uncertainties"))
-                throw pdal_error("No 'uncertainties' entry found in '" + m_profileFile + "'.");
-
-            // pull out the uncertainties
-            for (auto& entry : params["uncertainties"])
-            {
-                std::string name = entry["name"];
-                double value = entry["value"];
-
-                if (Utils::iequals(name, "std_lidar_range"))
-                    m_stdLidarRange = value;
-                else if (Utils::iequals(name, "std_scan_angle"))
-                    m_stdScanAngle = value;
-                else if (Utils::iequals(name, "std_sensor_xy"))
-                    m_stdSensorXy = value;
-                else if (Utils::iequals(name, "std_sensor_z"))
-                    m_stdSensorZ = value;
-                else if (Utils::iequals(name, "std_sensor_rollpitch"))
-                    m_stdSensorRollPitch = value;
-                else if (Utils::iequals(name, "std_sensor_yaw"))
-                    m_stdSensorYaw = value;
-                else if (Utils::iequals(name, "std_bore_rollpitch"))
-                    m_stdBoreRollPitch = value;
-                else if (Utils::iequals(name, "std_bore_yaw"))
-                    m_stdBoreYaw = value;
-                else if (Utils::iequals(name, "std_lever_xyz"))
-                    m_stdLeverXyz = value;
-                else if (Utils::iequals(name, "beam_divergence"))
-                    m_beamDivergence = value;
-                else
-                    throw pdal_error("Unrecognized uncertainty name '" + name + "' in '" + m_profileFile + "'.");
-            }
+            if (Utils::iequals(name, "std_lidar_range"))
+                m_stdLidarRange = value;
+            else if (Utils::iequals(name, "std_scan_angle"))
+                m_stdScanAngle = value;
+            else if (Utils::iequals(name, "std_sensor_xy"))
+                m_stdSensorXy = value;
+            else if (Utils::iequals(name, "std_sensor_z"))
+                m_stdSensorZ = value;
+            else if (Utils::iequals(name, "std_sensor_rollpitch"))
+                m_stdSensorRollPitch = value;
+            else if (Utils::iequals(name, "std_sensor_yaw"))
+                m_stdSensorYaw = value;
+            else if (Utils::iequals(name, "std_bore_rollpitch"))
+                m_stdBoreRollPitch = value;
+            else if (Utils::iequals(name, "std_bore_yaw"))
+                m_stdBoreYaw = value;
+            else if (Utils::iequals(name, "std_lever_xyz"))
+                m_stdLeverXyz = value;
+            else if (Utils::iequals(name, "beam_divergence"))
+                m_beamDivergence = value;
+            else
+                throw pdal_error("Unrecognized uncertainty name '" + name + "' in '" + m_uncertaintyFile + "'.");
         }
-        else if (m_profileDefArg->set())
-            setProfile();
-        else
-            throwError("The 'profile_predefined' or 'profile_filename' option must be specified.");
 
         // standardize units
         m_stdScanAngle *= (M_PI / 180.0);           // degrees to radians
@@ -195,85 +184,6 @@ namespace pdal
             throw pdal_error(
                 "filters.als_tpu must have two point view inputs, no more, no less");
         }
-    }
-
-
-    void ALS_TPU::setProfile()
-    {
-        if (Utils::iequals(m_profileDef, "low"))
-        // based on a ?? Adam??
-        {
-            // meters
-            m_stdLidarRange = 0.02;
-            // degrees
-            m_stdScanAngle = 0.001 / sqrt(12);
-            // meters
-            m_stdSensorXy = 0.01;
-            // meters
-            m_stdSensorZ = 0.02;
-            // degrees
-            m_stdSensorRollPitch = 0.005;
-            // degrees
-            m_stdSensorYaw = 0.007;
-            // degrees
-            m_stdBoreRollPitch = 0.001;
-            // degrees
-            m_stdBoreYaw = 0.004;
-            // meters
-            m_stdLeverXyz = 0.02;
-            // milliradians
-            m_beamDivergence = 0.35 * sqrt(2);
-        }
-        else if (Utils::iequals(m_profileDef, "medium"))
-        {
-            // based on a ??
-            // meters
-            m_stdLidarRange = 0.02;
-            // degrees
-            m_stdScanAngle = 0.001 / sqrt(12);
-            // meters
-            m_stdSensorXy = 0.01;
-            // meters
-            m_stdSensorZ = 0.02;
-            // degrees
-            m_stdSensorRollPitch = 0.005;
-            // degrees
-            m_stdSensorYaw = 0.007;
-            // degrees
-            m_stdBoreRollPitch = 0.001;
-            // degrees
-            m_stdBoreYaw = 0.004;
-            // meters
-            m_stdLeverXyz = 0.02;
-            // milliradians
-            m_beamDivergence = 0.35 * sqrt(2);
-        }
-        else if (Utils::iequals(m_profileDef, "high"))
-        {
-            // based on a ??
-            // meters
-            m_stdLidarRange = 0.02;
-            // degrees
-            m_stdScanAngle = 0.001 / sqrt(12);
-            // meters
-            m_stdSensorXy = 0.01;
-            // meters
-            m_stdSensorZ = 0.02;
-            // degrees
-            m_stdSensorRollPitch = 0.005;
-            // degrees
-            m_stdSensorYaw = 0.007;
-            // degrees
-            m_stdBoreRollPitch = 0.001;
-            // degrees
-            m_stdBoreYaw = 0.004;
-            // meters
-            m_stdLeverXyz = 0.02;
-            // milliradians
-            m_beamDivergence = 0.35 * sqrt(2);
-        }
-        else
-            throwError("Unrecognized profile");
     }
 
 

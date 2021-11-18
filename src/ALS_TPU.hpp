@@ -46,7 +46,7 @@ namespace pdal {
             std::string getName() const;
 
         private:
-            std::string m_profileFile, m_stDevFile;
+            std::string m_uncertaintyFile;
 
             double m_maximumIncidenceAngle;
             double m_noDataValue;
@@ -71,7 +71,6 @@ namespace pdal {
             virtual PointViewSet run(PointViewPtr view);
             virtual void done(PointTableRef _);
 
-            void setProfile();
             PointViewPtr tpu(PointViewPtr cloud, PointViewPtr trajectory);
             bool linearInterpolation(
                 double pointTime,
