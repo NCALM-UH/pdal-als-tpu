@@ -76,7 +76,7 @@ namespace pdal
     {
         // check file existence
         if (!FileUtils::fileExists(m_uncertaintyFile))
-            throw pdal_error("Cannot read measuremet uncertainty file '" + m_uncertaintyFile + "'.");
+            throw pdal_error("Cannot read measurement uncertainty file '" + m_uncertaintyFile + "'.");
 
         // open and check for an uncertainties entry
         std::istream* paramFile = FileUtils::openFile(m_uncertaintyFile);

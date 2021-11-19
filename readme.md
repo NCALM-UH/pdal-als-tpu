@@ -1,5 +1,7 @@
 # filters.tpu
 
+![](doc/img/flightline111-StdZ-large.png)
+
 A [PDAL](https://pdal.io/index.html) filter to generate per-point total propagated uncertainty (TPU) for airborne laser scanning (ALS) point clouds when supplied:
 
 1. An ALS point cloud of a single flightline
@@ -152,9 +154,4 @@ filters.als_tpu              Per-point airborne lidar Total Propagated Uncertain
 
 The general approach of the algorithm is detailed [here](doc/details.md). A detailed white paper with the exact math and assumptions used in the algorithm is forthcoming.
 
-A complex example that starts with imperfect tiled LAS point cloud data from a triple channel ALS and works through the process of generating a clean set of LAZ tiles cropped to an area of interest and containing per-point TPU can be found [here](example/example.md). A simpler example should be created as a first step for new users.
-
-
-## Tests
-
-Forthcoming.
+A complex example that starts with imperfect tiled LAS point cloud data from a triple channel ALS and works through the process of generating a clean set of LAZ tiles cropped to an area of interest and containing per-point TPU can be found [here](doc/example/example.md). A simpler example should be created as a first step for new users.

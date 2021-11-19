@@ -1,28 +1,27 @@
 [
     {
         "type": "readers.las",
-        "filename": "test_uh.las"
-    },
-    {
-        "type": "filters.normal",
-        "knn": 128,
+        "filename": "test/data/112-test-pnts.laz",
         "tag": "cloud"
     },
     {
-        "type": "filters.sritrajectory",
+        "type": "readers.text",
+        "filename": "test/data/112-test-traj.txt",
         "tag": "trajectory"
     },
     {
         "type": "filters.als_tpu",
+        "uncertainty_file": "test/uncertainty/Titan-C2-1064nm.json",
         "inputs": [
             "cloud",
             "trajectory"
-        ]
+        ],
+        "extended_output": true
     },
     {
         "type": "writers.las",
         "minor_version": 4,
         "extra_dims": "all",
-        "filename": "test_uh-tpu.las"
+        "filename": "test/data/112-test-pnts-tpu.laz"
     }
 ]
