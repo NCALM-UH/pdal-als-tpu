@@ -91,6 +91,3 @@ The measurement uncertainties are supplied to the `als_tpu` filter via a JSON fi
 ```
 
 Note that the `als_tpu` filter is only concerned with the objects in the `uncertainties` array. Within each of these objects, the filter looks for the `name` and `value` keys. The `system` and `source` keys are ignored and can be omitted, but provide an example of one way to document the source of the uncertainty information. All possible uncertainties are shown in the above example. The filter will assign a value of zero to any uncertainty that is omitted. Note that the angular values must be given in degrees, the linear units in meters, and laser beam divergence must use the $1/e^2$ definition and be given in milliradians. 
-
-
-## L

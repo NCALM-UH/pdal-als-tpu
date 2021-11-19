@@ -3,3 +3,8 @@
 *.txt
 build/
 .vscode/
+
+environment.yml
+builder.sh
+als_tpu.json
+
