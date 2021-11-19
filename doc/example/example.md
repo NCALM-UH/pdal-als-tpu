@@ -417,7 +417,7 @@ Now let's create a PDAL pipeline for the TPU filter. I've saved this to `./tpu/t
     },
     {
         "type": "filters.als_tpu",
-        "measurement_stdev": "",
+        "uncertainty_file": "",
         "inputs": [
             "cloud",
             "trajectory"
@@ -432,7 +432,7 @@ Now let's create a PDAL pipeline for the TPU filter. I've saved this to `./tpu/t
 ]
 ```
 
-Note all the blank filenames! The `readers.las`, `readers.text`, and `writers.las` filenames and the JSON filename (`measurement_stdev` option) in `filters.als_tpu` are all blank. We'll override all these blank values when calling the pipeline. Setting it up this way allows us to run things with the `parallel` package. Recall that we have a list of the flightline numbers in the `lines` variable.
+Note all the blank filenames! The `readers.las`, `readers.text`, and `writers.las` filenames and the JSON filename (`uncertainty_file` option) in `filters.als_tpu` are all blank. We'll override all these blank values when calling the pipeline. Setting it up this way allows us to run things with the `parallel` package. Recall that we have a list of the flightline numbers in the `lines` variable.
 
 ```bash
 (pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ echo $lines
@@ -452,7 +452,7 @@ The `trajectories` variable contains the trajectory name that will be used for e
 OK, now we're ready to generate TPU. At last.
 
 ```bash
-(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ parallel -j+0 pdal pipeline ./tpu/tpu.json '--stage.cloud.filename="./flightlines/{1}.laz"' '--stage.trajectory.filename="./trajectories/{2}.txt"' '--filters.als_tpu.measurement_stdev="./tpu/sensor-profiles/{3}.json"' '--writers.las.filename="./tpu/flightlines/{1}.laz"' ::: $lines :::+ $trajectories :::+ $channels
+(pdal-als-tpu) pjhartze@GSE-10:/mnt/f/uh$ parallel -j+0 pdal pipeline ./tpu/tpu.json '--stage.cloud.filename="./flightlines/{1}.laz"' '--stage.trajectory.filename="./trajectories/{2}.txt"' '--filters.als_tpu.uncertainty_file="./tpu/sensor-profiles/{3}.json"' '--writers.las.filename="./tpu/flightlines/{1}.laz"' ::: $lines :::+ $trajectories :::+ $channels
 ```
 
 Let's take a look at the X-, Y-, and Z-component TPU (standard deviations) for flightline 111 in CloudCompare. They look reasonable. The color stretches are 0.08-0.10 meters for `StdX`, 0.08-0.10 meters for `StdY`, and 0.03-0.09 meters for `StdZ` (CloudCompare's color bars are not very informative if you make large adjustments to the stretch).
