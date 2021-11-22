@@ -4,3 +4,5 @@ build/
 environment.yaml
 builder.sh
 
+test/data/112-five-seconds-tpu.laz
+
