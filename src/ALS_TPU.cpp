@@ -453,16 +453,19 @@ namespace pdal
         lidarDist = laserVector.norm();
 
         // incidence: angle between laser ray and ground normal vector
-        Vector3d groundNormalVector, unitLaserVector;
-        groundNormalVector << cloudPoint.getFieldAs<double>(Id::NormalX),
-                              cloudPoint.getFieldAs<double>(Id::NormalY),
-                              cloudPoint.getFieldAs<double>(Id::NormalZ);
-        unitLaserVector = laserVector / lidarDist;
-        incidenceAngle = acos(unitLaserVector.dot(-groundNormalVector));
-        if (incidenceAngle > m_maximumIncidenceAngle)
+        if (m_includeIncidenceAngle)
         {
-            incidenceAngle = m_maximumIncidenceAngle;
+            Vector3d groundNormalVector, unitLaserVector;
+            groundNormalVector << cloudPoint.getFieldAs<double>(Id::NormalX),
+                                cloudPoint.getFieldAs<double>(Id::NormalY),
+                                cloudPoint.getFieldAs<double>(Id::NormalZ);
+            unitLaserVector = laserVector / lidarDist;
+            incidenceAngle = acos(unitLaserVector.dot(-groundNormalVector));
+            if (incidenceAngle > m_maximumIncidenceAngle)
+                incidenceAngle = m_maximumIncidenceAngle;
         }
+        else
+            incidenceAngle = 0.0;
 
         // inverse of IMU frame to NED frame
         Matrix3d inverseImu;

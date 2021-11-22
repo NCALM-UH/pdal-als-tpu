@@ -1,10 +1,6 @@
-*.laz
-*.las
-*.txt
 build/
 .vscode/
 
 environment.yaml
 builder.sh
-als_tpu.json
 
