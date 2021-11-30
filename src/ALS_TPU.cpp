@@ -194,7 +194,7 @@ namespace pdal
         // iterate over each cloud point
         for (PointId i = 0; i < cloud->size(); ++i)
         {
-            // 1. interpolate sensor xyz and heading from trajectory points
+            // 1. interpolate sensor xyz and attitude from trajectory points
             double trajX, trajY, trajZ, trajHeading, trajPitch;
             bool successfulInterp = linearInterpolation(
                 cloud->getFieldAs<double>(Id::GpsTime, i),
@@ -221,12 +221,7 @@ namespace pdal
                     trajX, trajY, trajZ, trajHeading, trajPitch,
                     lidarDist, scanAngleRL, scanAngleFB, incidenceAngle);
 
-                // 3. build observation covariance matrix
-                MatrixXd obsCovariance = observationCovariance(
-                    lidarDist,
-                    incidenceAngle);
-
-                // 4. zero out observations that we do not estimate
+                // 3. zero out observations that we do not estimate
                 double trajRoll = 0.0;
                 double boreRoll = 0.0;
                 double borePitch = 0.0;
@@ -234,6 +229,11 @@ namespace pdal
                 double leverX = 0.0;
                 double leverY = 0.0;
                 double leverZ = 0.0;
+
+                // 4. build observation covariance matrix
+                MatrixXd obsCovariance = observationCovariance(
+                    lidarDist,
+                    incidenceAngle);
 
                 // 5. propagate observation variance into point xyz covariance matrix
                 Matrix3d lidarPointCovariance = propagateCovariance(
