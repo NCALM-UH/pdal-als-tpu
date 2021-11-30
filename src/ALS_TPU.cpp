@@ -377,7 +377,7 @@ namespace pdal
             6. sensor z
             7. sensor roll
             8. sensor pitch
-            9. sensor yaw
+            9. sensor heading
             10. boresight roll
             11. boresight pitch
             12. boresight yaw
