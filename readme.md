@@ -162,9 +162,9 @@ This will produce a file named `112-five-seconds-tpu.laz` in the `test/data` dir
 
 ## Additional Detail and Example Workflows
 
-The general approach of the algorithm is detailed [here](doc/details.md). A detailed white paper with the exact math and assumptions used in the algorithm is forthcoming.
-
-A complex example that starts with imperfect tiled LAS point cloud data from a triple channel ALS and works through the process of generating a clean set of LAZ tiles cropped to an area of interest and containing per-point TPU can be found [here](doc/example/example.md). A simpler example should be created as a first step for new users.
+1. The general approach of the algorithm is reviewed [here](doc/details.md).
+2. A technical document detailing the math and assumptions used in the algorithm in more depth is found [here](doc/technical/ALS_TPU_Technical_Document.pdf).
+3. A complex example that starts with imperfect tiled LAS point cloud data from a triple channel ALS and works through the process of generating a clean set of LAZ tiles cropped to an area of interest and containing per-point TPU can be found [here](doc/example/example.md). A simpler example should be created as a first step for new users.
 
 
 ## Tests
